@@ -1,0 +1,12 @@
+# Bun configuration
+
+[install]
+# Use workspace protocol for internal packages
+auto = true
+peer = true
+
+[install.scopes]
+# Configure scoped packages (optional - Bun handles this automatically)
+"@codalyn" = "workspace:*"
+
+

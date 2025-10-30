@@ -1,0 +1,127 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 225 27% 6%;
+  --foreground: 210 40% 96%;
+
+  --card: 222 26% 10%;
+  --card-foreground: 210 40% 96%;
+
+  --popover: 222 26% 12%;
+  --popover-foreground: 210 40% 96%;
+
+  --primary: 248 100% 72%;
+  --primary-foreground: 223 40% 10%;
+
+  --secondary: 220 18% 20%;
+  --secondary-foreground: 210 40% 96%;
+
+  --muted: 220 18% 18%;
+  --muted-foreground: 215 16% 72%;
+
+  --accent: 262 82% 72%;
+  --accent-foreground: 223 47% 10%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 210 40% 96%;
+
+  --success: 154 84% 56%;
+  --success-foreground: 221 39% 10%;
+
+  --warning: 42 100% 62%;
+  --warning-foreground: 221 39% 10%;
+
+  --info: 202 85% 56%;
+  --info-foreground: 210 40% 96%;
+
+  --border: 220 18% 20%;
+  --input: 220 18% 22%;
+  --ring: 248 100% 72%;
+
+  --grid-color: 148, 163, 184;
+  --spotlight-color: 129, 140, 248;
+  --primary-rgb: 129, 140, 248;
+
+  --radius: 18px;
+}
+
+@media (max-width: 768px) {
+  :root {
+    --radius: 14px;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply bg-background;
+  }
+
+  body {
+    @apply min-h-screen bg-background text-foreground antialiased;
+    @apply selection:bg-primary/20 selection:text-primary-foreground;
+    background-image: radial-gradient(
+        circle at 20% 20%,
+        rgba(var(--primary-rgb), 0.12),
+        transparent 45%
+      ),
+      radial-gradient(
+        circle at 80% 0%,
+        rgba(56, 189, 248, 0.12),
+        transparent 50%
+      ),
+      linear-gradient(180deg, rgba(2, 6, 23, 0.6), transparent 45%, rgba(2, 6, 23, 0.95));
+    background-attachment: fixed;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply tracking-tight text-foreground;
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply bg-white/[0.02] backdrop-blur-xl border border-white/10 shadow-surface-lg;
+  }
+
+  .surface {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04),
+      0 24px 60px -32px rgba(15, 23, 42, 0.65);
+  }
+
+  .bg-grid-sm {
+    background-size: 32px 32px;
+  }
+
+  .bg-grid-sm::before {
+    content: "";
+  }
+
+  .gradient-border {
+    position: relative;
+  }
+
+  .gradient-border::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    background: linear-gradient(
+      120deg,
+      rgba(var(--primary-rgb), 0.65),
+      rgba(56, 189, 248, 0.35),
+      rgba(236, 72, 153, 0.35)
+    );
+    z-index: -1;
+    opacity: 0.7;
+  }
+}
+
