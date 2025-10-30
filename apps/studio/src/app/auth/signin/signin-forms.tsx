@@ -4,13 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { signInWithEmail } from "@/server/actions/auth";
 import { createClient } from "@/lib/supabase-client";
-import { GitBranch, Mail } from "lucide-react";
+import { GitBranch, Mail, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export function SignInForms() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [authMode, setAuthMode] = useState<"github" | "email" | null>(null);
 
   const handleGitHubSignIn = async () => {
     setIsLoading(true);
@@ -50,52 +51,83 @@ export function SignInForms() {
     }
   };
 
-  return (
-    <div className="space-y-6">
-      <Button
-        type="button"
-        onClick={handleGitHubSignIn}
-        disabled={isLoading}
-        size="lg"
-        className="w-full justify-center gap-3"
-      >
-        <GitBranch className="h-5 w-5" />
-        {isLoading ? "Redirecting..." : "Continue with GitHub"}
-      </Button>
-
-      <div className="relative">
-        <div className="absolute inset-0 flex items-center">
-          <span className="w-full border-t border-white/10" />
-        </div>
-        <div className="relative flex justify-center text-xs uppercase tracking-[0.24em] text-muted-foreground">
-          <span className="bg-background px-3">or use email</span>
-        </div>
+  if (authMode === "email") {
+    return (
+      <div className="space-y-6">
+        <button
+          onClick={() => setAuthMode(null)}
+          className="text-sm text-muted-foreground hover:text-foreground transition"
+        >
+          ← Back
+        </button>
+        <form action={signInWithEmail} className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">
+              Work email
+            </label>
+            <Input
+              type="email"
+              name="email"
+              placeholder="you@company.com"
+              required
+              autoComplete="email"
+              className="h-12"
+            />
+          </div>
+          <Button
+            type="submit"
+            size="lg"
+            className="w-full justify-center gap-2"
+          >
+            <Mail className="h-4 w-4" />
+            Send magic link
+          </Button>
+        </form>
       </div>
+    );
+  }
 
-      <form action={signInWithEmail} className="space-y-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-muted-foreground">
-            Work email
-          </label>
-          <Input
-            type="email"
-            name="email"
-            placeholder="you@company.com"
-            required
-            autoComplete="email"
-          />
-        </div>
+  return (
+    <div className="space-y-4">
+      <div className="space-y-3">
         <Button
-          type="submit"
+          type="button"
+          onClick={handleGitHubSignIn}
+          disabled={isLoading}
+          size="lg"
+          className="w-full justify-center gap-3 text-base h-12"
+        >
+          <GitBranch className="h-5 w-5" />
+          {isLoading ? "Redirecting..." : "Continue with GitHub"}
+        </Button>
+
+        <Button
+          type="button"
+          onClick={() => setAuthMode("email")}
           variant="outline"
           size="lg"
-          className="w-full justify-center gap-2"
+          className="w-full justify-center gap-2 text-base h-12"
         >
           <Mail className="h-4 w-4" />
-          Send magic link
+          Continue with email
         </Button>
-      </form>
+      </div>
+
+      <div className="space-y-3 border-t border-white/10 pt-6">
+        <p className="text-center text-sm text-muted-foreground font-medium">
+          Get started with
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <button className="flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-muted-foreground transition hover:border-white/20 hover:bg-white/10">
+            <Zap className="h-4 w-4" />
+            <span>New Project</span>
+          </button>
+          <button className="flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-muted-foreground transition hover:border-white/20 hover:bg-white/10">
+            <Zap className="h-4 w-4" />
+            <span>GitHub Repo</span>
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
-
