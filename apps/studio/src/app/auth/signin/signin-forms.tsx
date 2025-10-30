@@ -18,10 +18,8 @@ export function SignInForms() {
     try {
       const supabase = createClient();
 
-      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
-      const redirectUrl = siteUrl
-        ? `${siteUrl}/auth/callback`
-        : `${window.location.origin}/auth/callback`;
+      // Always use the current window origin to ensure correct redirect URL
+      const redirectUrl = `${window.location.origin}/auth/callback`;
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "github",
@@ -31,6 +29,7 @@ export function SignInForms() {
       });
 
       if (error) {
+        console.error("GitHub OAuth error:", error);
         router.push(
           `/auth/signin?error=${encodeURIComponent(error.message)}`
         );
@@ -39,8 +38,15 @@ export function SignInForms() {
 
       if (data.url) {
         window.location.href = data.url;
+      } else {
+        router.push(
+          `/auth/signin?error=${encodeURIComponent(
+            "No authentication URL returned from Supabase"
+          )}`
+        );
       }
     } catch (error) {
+      console.error("GitHub sign in error:", error);
       router.push(
         `/auth/signin?error=${encodeURIComponent(
           error instanceof Error ? error.message : "An error occurred"
