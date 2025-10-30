@@ -2,14 +2,14 @@
  * Supabase Auth helpers for Next.js App Router
  */
 
-import { createServerSupabaseClient } from "./supabase";
+import { createReadOnlyServerSupabaseClient } from "./supabase";
 import { redirect } from "next/navigation";
 import { db } from "./db";
 import { users } from "./db/schema";
 import { eq } from "drizzle-orm";
 
 export async function getSession() {
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createReadOnlyServerSupabaseClient();
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -17,7 +17,7 @@ export async function getSession() {
 }
 
 export async function getUser() {
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createReadOnlyServerSupabaseClient();
   const {
     data: { user },
     error,
@@ -85,6 +85,9 @@ export async function requireAuth() {
 }
 
 export async function signOut() {
+  // Note: This function requires cookie modification, so it should only be called
+  // from Server Actions or Route Handlers. Consider using signOutAction instead.
+  const { createServerSupabaseClient } = await import("./supabase");
   const supabase = await createServerSupabaseClient();
   await supabase.auth.signOut();
   redirect("/auth/signin");
