@@ -27,9 +27,7 @@ export function SignInForms() {
 
       if (error) {
         console.error("GitHub OAuth error:", error);
-        router.push(
-          `/auth/signin?error=${encodeURIComponent(error.message)}`
-        );
+        router.push(`/auth/signin?error=${encodeURIComponent(error.message)}`);
         return;
       }
 
@@ -37,9 +35,7 @@ export function SignInForms() {
         window.location.href = data.url;
       } else {
         router.push(
-          `/auth/signin?error=${encodeURIComponent(
-            "No authentication URL returned from Supabase"
-          )}`
+          `/auth/signin?error=${encodeURIComponent("No authentication URL returned from Supabase")}`
         );
       }
     } catch (error) {
@@ -65,9 +61,7 @@ export function SignInForms() {
         </button>
         <form action={signInWithEmail} className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">
-              Work email
-            </label>
+            <label className="text-sm font-medium text-foreground">Work email</label>
             <Input
               type="email"
               name="email"
@@ -77,11 +71,7 @@ export function SignInForms() {
               className="h-12"
             />
           </div>
-          <Button
-            type="submit"
-            size="lg"
-            className="w-full justify-center gap-2"
-          >
+          <Button type="submit" size="lg" className="w-full justify-center gap-2">
             <Mail className="h-4 w-4" />
             Send magic link
           </Button>
@@ -117,9 +107,7 @@ export function SignInForms() {
       </div>
 
       <div className="space-y-3 border-t border-white/10 pt-6">
-        <p className="text-center text-sm text-muted-foreground font-medium">
-          Get started with
-        </p>
+        <p className="text-center text-sm text-muted-foreground font-medium">Get started with</p>
         <div className="grid grid-cols-2 gap-3">
           <button className="flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-muted-foreground transition hover:border-white/20 hover:bg-white/10">
             <Zap className="h-4 w-4" />

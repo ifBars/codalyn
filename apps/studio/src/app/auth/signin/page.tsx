@@ -39,12 +39,12 @@ export default async function SignInPage({
             What should we{" "}
             <span className="bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
               build
-            </span>
-            {" "}together?
+            </span>{" "}
+            together?
           </h1>
           <p className="mx-auto max-w-xl text-base text-muted-foreground sm:text-lg">
-            From idea to production. Design, code, test, and deploy full-stack
-            apps using natural language—without leaving your browser.
+            From idea to production. Design, code, test, and deploy full-stack apps using natural
+            language—without leaving your browser.
           </p>
         </div>
 
@@ -81,14 +81,11 @@ export default async function SignInPage({
         </div>
 
         <p className="text-center text-xs text-muted-foreground">
-          By continuing you agree to receive one-time emails about your
-          workspace activity.
+          By continuing you agree to receive one-time emails about your workspace activity.
         </p>
 
         <div className="mt-12 pt-8 border-t border-white/10">
-          <p className="text-center text-xs text-muted-foreground mb-4">
-            TRUSTED BY DEVELOPERS
-          </p>
+          <p className="text-center text-xs text-muted-foreground mb-4">TRUSTED BY DEVELOPERS</p>
           <div className="flex flex-wrap items-center justify-center gap-6 sm:gap-8 opacity-60">
             <div className="text-xs font-semibold text-muted-foreground">GitHub</div>
             <div className="text-xs font-semibold text-muted-foreground">Vercel</div>
