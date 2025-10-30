@@ -18,13 +18,10 @@ export function SignInForms() {
     try {
       const supabase = createClient();
 
-      // Always use the current window origin to ensure correct redirect URL
-      const redirectUrl = `${window.location.origin}/auth/callback`;
-
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "github",
         options: {
-          redirectTo: redirectUrl,
+          redirectTo: `${window.location.origin}/auth/callback`,
         },
       });
 
