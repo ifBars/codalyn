@@ -1,12 +1,21 @@
 # Codalyn - AI-Powered Web App Builder
 
-An in-browser AI engineer that builds full-stack web applications from natural language specifications.
+An in-browser AI engineer that builds full-stack web applications from natural language specifications using **Gemini 2.5 Flash Lite**.
+
+## ✨ Features
+
+- 🤖 **AI-Powered Development** - Uses Google Gemini 2.5 Flash Lite for intelligent code generation
+- 💬 **Natural Language Interface** - Describe what you want to build in plain English
+- 🔧 **Tool Calling** - AI can read/write files, run commands, manage git, and more
+- 🎨 **Live Preview** - See your application running in real-time
+- 📦 **WebContainer Support** - Run Node.js in the browser for instant previews
+- 🗄️ **Database Integration** - Built-in Supabase integration with Drizzle ORM
 
 ## Architecture
 
-Monorepo structure with npm workspaces:
+Monorepo structure with Bun workspaces:
 - `apps/studio` - Next.js 15 App Router Studio (chat + editor + preview)
-- `packages/sandbox` - Sandbox execution engine (WebContainers + Docker)
+- `packages/sandbox` - Sandbox execution engine (WebContainers + Docker + Mock)
 - `packages/tools` - AI tool schemas and executors
 - `packages/runtime` - Runtime utilities for generated apps
 - `packages/shared` - Shared types and utilities
@@ -17,45 +26,66 @@ Monorepo structure with npm workspaces:
 - **Language**: TypeScript
 - **Auth**: Supabase Auth
 - **Database**: Supabase Postgres with Drizzle ORM
-- **AI**: Google Gemini (function calling)
-- **Sandbox**: WebContainers (in-browser) + Docker (heavy tasks)
+- **AI**: Google Gemini 2.5 Flash Lite (function calling)
+- **Sandbox**: WebContainers (browser) + Mock (server-side)
 - **UI**: Tailwind CSS + shadcn/ui + Zustand
 - **Code Editor**: Monaco Editor
 - **Git**: GitHub integration
 
-## Setup
+## 🚀 Quick Start
 
-1. Install Bun (if not already installed):
+### Prerequisites
+
+- **Bun** >= 1.0.0 ([Install](https://bun.sh))
+- **Google Gemini API Key** ([Get one free](https://makersuite.google.com/app/apikey))
+- **Supabase Account** ([Sign up](https://supabase.com))
+
+### Setup in 5 Minutes
+
+1. **Install Bun** (if not already installed):
    ```bash
    curl -fsSL https://bun.sh/install | bash
    ```
 
-2. Clone the repository
-3. Install dependencies:
+2. **Clone and Install**:
    ```bash
+   git clone <your-repo-url>
+   cd codalyn
    bun install
    ```
 
-4. Set up environment variables:
-   - Copy `.env.example` to `.env.local`
-   - Fill in Supabase credentials
-   - Add Gemini API key
-   - Add GitHub OAuth credentials
-
-5. Set up Supabase:
-   - Create a new Supabase project
-   - Copy the connection string to `DATABASE_URL`
-   - Run migrations:
-     ```bash
-     cd apps/studio
-     bun run db:generate
-     bun run db:migrate
-     ```
-
-6. Start development server:
+3. **Configure Environment**:
    ```bash
+   cd apps/studio
+   cp .env.example .env.local
+   ```
+
+   Edit `.env.local` and add:
+   - `GEMINI_API_KEY` - Your Gemini API key
+   - `NEXT_PUBLIC_SUPABASE_URL` - Your Supabase project URL
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Your Supabase anon key
+   - `DATABASE_URL` - Your Supabase database connection string
+
+4. **Set up Database** (if using Supabase):
+   ```bash
+   bun run db:push
+   ```
+
+5. **Start Development**:
+   ```bash
+   cd ../..  # Back to root
    bun run dev
    ```
+
+6. **Open Your Browser**:
+   Visit [http://localhost:3000](http://localhost:3000) and start building! 🎉
+
+## 🎯 How It Works
+
+1. **Chat with the AI** - Describe what you want to build
+2. **AI Plans & Executes** - Gemini 2.5 Flash Lite breaks down the task and uses tools to implement it
+3. **Real-time Preview** - See your app come to life as the AI builds it
+4. **Iterate & Deploy** - Refine with natural language and deploy when ready
 
 ## Development
 

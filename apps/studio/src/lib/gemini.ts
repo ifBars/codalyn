@@ -25,7 +25,7 @@ export interface ToolResult {
 /**
  * Create a model with tool definitions
  */
-export function createModelWithTools(modelName: string = "gemini-pro"): GenerativeModel {
+export function createModelWithTools(modelName: string = "gemini-2.5-flash-lite"): GenerativeModel {
   const model = gemini.getGenerativeModel({ model: modelName });
   
   // Convert tool definitions to Gemini function declarations

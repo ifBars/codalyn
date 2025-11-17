@@ -46,7 +46,8 @@ export async function chatWithAI(
   if (!user) throw new Error("Unauthorized");
 
   // Get or create sandbox for project
-  const sandbox = await sandboxManager.createSandbox("webcontainer");
+  // Use mock sandbox for server-side execution (WebContainers only work in browser)
+  const sandbox = await sandboxManager.createSandbox("mock");
 
   // Get conversation history
   const session = await db.query.aiSessions.findFirst({
@@ -133,7 +134,8 @@ export async function* streamChatWithAI(
   const user = await getUser();
   if (!user) throw new Error("Unauthorized");
 
-  const sandbox = await sandboxManager.createSandbox("webcontainer");
+  // Use mock sandbox for server-side execution (WebContainers only work in browser)
+  const sandbox = await sandboxManager.createSandbox("mock");
 
   const session = await db.query.aiSessions.findFirst({
     where: eq(aiSessions.id, sessionId),

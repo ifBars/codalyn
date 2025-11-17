@@ -11,10 +11,9 @@ export class WebContainerSandbox implements SandboxInterface {
   async init(options?: SandboxOptions): Promise<void> {
     const { WebContainer } = await import("@webcontainer/api");
     this.webcontainer = await WebContainer.boot();
-    
-    if (options?.files) {
-      await this.webcontainer.mount(options.files);
-    }
+
+    // Note: options.files would need to be converted to FileSystemTree format
+    // For now, this is a placeholder - actual file mounting would require proper conversion
   }
 
   async readFile(path: string): Promise<string> {
@@ -41,7 +40,11 @@ export class WebContainerSandbox implements SandboxInterface {
 
   async mkdir(path: string, options?: { recursive?: boolean }): Promise<void> {
     if (!this.webcontainer) throw new Error("Sandbox not initialized");
-    await this.webcontainer.fs.mkdir(path, { recursive: options?.recursive ?? false });
+    if (options?.recursive) {
+      await this.webcontainer.fs.mkdir(path, { recursive: true });
+    } else {
+      await this.webcontainer.fs.mkdir(path);
+    }
   }
 
   async glob(pattern: string): Promise<string[]> {
@@ -87,8 +90,11 @@ export class WebContainerSandbox implements SandboxInterface {
       env: options?.env,
     });
 
+    // Generate a unique ID since WebContainer processes don't expose pid
+    const processId = crypto.randomUUID();
+
     return {
-      id: process.pid.toString(),
+      id: processId,
       kill: async () => {
         await process.kill();
       },

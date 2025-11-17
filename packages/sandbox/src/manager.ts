@@ -7,7 +7,7 @@ export class SandboxManager {
   private sandboxes: Map<string, SandboxInterface> = new Map();
 
   async createSandbox(
-    type: "webcontainer" | "docker",
+    type: "webcontainer" | "docker" | "mock" = "mock",
     options?: SandboxOptions
   ): Promise<SandboxInterface> {
     // Import dynamically to avoid circular dependencies
@@ -18,9 +18,17 @@ export class SandboxManager {
       const id = crypto.randomUUID();
       this.sandboxes.set(id, sandbox);
       return sandbox;
-    } else {
+    } else if (type === "docker") {
       const { DockerSandbox } = await import("./docker");
       const sandbox = new DockerSandbox();
+      await sandbox.init(options);
+      const id = crypto.randomUUID();
+      this.sandboxes.set(id, sandbox);
+      return sandbox;
+    } else {
+      // Use mock sandbox by default (works server-side)
+      const { MockSandbox } = await import("./mock");
+      const sandbox = new MockSandbox();
       await sandbox.init(options);
       const id = crypto.randomUUID();
       this.sandboxes.set(id, sandbox);
