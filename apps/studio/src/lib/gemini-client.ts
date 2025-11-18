@@ -27,6 +27,30 @@ export class GeminiClient {
     this.client = new GoogleGenerativeAI(apiKey);
     this.model = this.client.getGenerativeModel({
       model: "gemini-2.5-flash-lite",
+      generationConfig: {
+        temperature: 0.7, // Balance creativity and consistency
+        topP: 0.95,
+        topK: 40,
+        maxOutputTokens: 8192, // Allow for longer code generation
+      },
+      safetySettings: [
+        {
+          category: "HARM_CATEGORY_HARASSMENT",
+          threshold: "BLOCK_NONE",
+        },
+        {
+          category: "HARM_CATEGORY_HATE_SPEECH",
+          threshold: "BLOCK_NONE",
+        },
+        {
+          category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+          threshold: "BLOCK_NONE",
+        },
+        {
+          category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+          threshold: "BLOCK_NONE",
+        },
+      ],
     });
   }
 
@@ -41,22 +65,28 @@ export class GeminiClient {
     response: string;
     operations: FileOperation[];
   }> {
-    const systemPrompt = `You are an expert React + TypeScript + Tailwind CSS developer.
+    const systemPrompt = `You are an expert React + TypeScript + Tailwind CSS developer helping users build beautiful web applications.
 
-Your job is to help users build beautiful, modern web applications.
+## Your Capabilities
+You can read existing files, write new files, and modify code in a Vite + React + TypeScript project.
 
-Guidelines:
-- Generate clean, modern React components using TypeScript
-- Use Tailwind CSS for all styling (no custom CSS unless necessary)
-- Make components responsive and accessible
-- Use modern React patterns (hooks, functional components)
-- Keep components focused and reusable
-- Add helpful comments for complex logic
+## Code Generation Standards
+1. **React Patterns**: Use modern functional components with hooks (useState, useEffect, etc.)
+2. **TypeScript**: Include proper type annotations, interfaces for props
+3. **Tailwind CSS**: Use utility classes exclusively - no custom CSS files
+4. **Responsive Design**: Mobile-first approach with md:, lg: breakpoints
+5. **Accessibility**: Include ARIA labels, semantic HTML, keyboard navigation
+6. **Code Quality**: Clean, readable code with helpful comments for complex logic
 
-When the user asks you to create or modify something:
-1. Explain what you're going to build
-2. Generate the necessary code
-3. Specify file operations in this JSON format at the end:
+## File Structure
+- src/App.tsx - Main application component (modify this most often)
+- src/main.tsx - Entry point (don't modify unless specifically asked)
+- src/index.css - Tailwind imports (don't modify)
+- src/components/*.tsx - Create reusable components here
+- src/types/*.ts - TypeScript type definitions (create as needed)
+
+## Response Format
+IMPORTANT: You MUST end your response with a JSON code block containing file operations:
 
 \`\`\`json
 {
@@ -64,26 +94,28 @@ When the user asks you to create or modify something:
     {
       "type": "write",
       "path": "src/App.tsx",
-      "content": "... full file content ..."
+      "content": "...complete file content here..."
     }
   ]
 }
 \`\`\`
 
-Available files structure:
-- src/App.tsx (main component)
-- src/main.tsx (entry point, don't modify)
-- src/index.css (Tailwind imports, usually don't modify)
-- src/components/*.tsx (create components here)
+## Operation Rules
+1. **Always include complete file content** - never use placeholders or "..."
+2. **One operation per file** - if modifying multiple files, include multiple operations
+3. **Use forward slashes** in paths (e.g., "src/components/Button.tsx")
+4. **Escape special characters** in JSON strings (quotes, newlines, etc.)
 
-You can create new files in src/ or src/components/ as needed.
+## Workflow
+1. First, briefly explain what you'll build (1-2 sentences)
+2. Then provide the complete code
+3. Finally, add the JSON operations block
 
-Current tech stack:
-- Vite
+Tech Stack:
+- Vite 5.4+
 - React 18
-- TypeScript
-- Tailwind CSS 3
-`;
+- TypeScript 5.5+
+- Tailwind CSS 3.4+`;
 
     // Build conversation
     const parts: any[] = [
@@ -151,20 +183,28 @@ Current tech stack:
     operations?: FileOperation[];
     done: boolean;
   }> {
-    const systemPrompt = `You are an expert React + TypeScript + Tailwind CSS developer.
+    const systemPrompt = `You are an expert React + TypeScript + Tailwind CSS developer helping users build beautiful web applications.
 
-Your job is to help users build beautiful, modern web applications.
+## Your Capabilities
+You can read existing files, write new files, and modify code in a Vite + React + TypeScript project.
 
-Guidelines:
-- Generate clean, modern React components using TypeScript
-- Use Tailwind CSS for all styling
-- Make components responsive and accessible
-- Use modern React patterns (hooks, functional components)
+## Code Generation Standards
+1. **React Patterns**: Use modern functional components with hooks (useState, useEffect, etc.)
+2. **TypeScript**: Include proper type annotations, interfaces for props
+3. **Tailwind CSS**: Use utility classes exclusively - no custom CSS files
+4. **Responsive Design**: Mobile-first approach with md:, lg: breakpoints
+5. **Accessibility**: Include ARIA labels, semantic HTML, keyboard navigation
+6. **Code Quality**: Clean, readable code with helpful comments for complex logic
 
-When the user asks you to create or modify something:
-1. Explain what you're going to build
-2. Generate the necessary code
-3. Specify file operations in this JSON format at the end:
+## File Structure
+- src/App.tsx - Main application component (modify this most often)
+- src/main.tsx - Entry point (don't modify unless specifically asked)
+- src/index.css - Tailwind imports (don't modify)
+- src/components/*.tsx - Create reusable components here
+- src/types/*.ts - TypeScript type definitions (create as needed)
+
+## Response Format
+IMPORTANT: You MUST end your response with a JSON code block containing file operations:
 
 \`\`\`json
 {
@@ -172,12 +212,28 @@ When the user asks you to create or modify something:
     {
       "type": "write",
       "path": "src/App.tsx",
-      "content": "... full file content ..."
+      "content": "...complete file content here..."
     }
   ]
 }
 \`\`\`
-`;
+
+## Operation Rules
+1. **Always include complete file content** - never use placeholders or "..."
+2. **One operation per file** - if modifying multiple files, include multiple operations
+3. **Use forward slashes** in paths (e.g., "src/components/Button.tsx")
+4. **Escape special characters** in JSON strings (quotes, newlines, etc.)
+
+## Workflow
+1. First, briefly explain what you'll build (1-2 sentences)
+2. Then provide the complete code
+3. Finally, add the JSON operations block
+
+Tech Stack:
+- Vite 5.4+
+- React 18
+- TypeScript 5.5+
+- Tailwind CSS 3.4+`;
 
     const parts: any[] = [{ text: systemPrompt }];
 
@@ -237,21 +293,55 @@ When the user asks you to create or modify something:
 
   /**
    * Extract file operations from AI response
+   * Supports multiple formats and handles edge cases
    */
   private extractOperations(response: string): FileOperation[] {
-    // Look for JSON code block with operations
-    const jsonBlockRegex = /```json\s*(\{[\s\S]*?\})\s*```/;
-    const match = response.match(jsonBlockRegex);
+    // Try multiple patterns to find JSON operations
+
+    // Pattern 1: Standard JSON code block
+    let jsonBlockRegex = /```json\s*(\{[\s\S]*?\})\s*```/;
+    let match = response.match(jsonBlockRegex);
+
+    // Pattern 2: JSON without the 'json' language specifier
+    if (!match) {
+      jsonBlockRegex = /```\s*(\{[\s\S]*?operations[\s\S]*?\})\s*```/;
+      match = response.match(jsonBlockRegex);
+    }
+
+    // Pattern 3: Bare JSON object (no code block)
+    if (!match) {
+      jsonBlockRegex = /(\{[\s\S]*?"operations"\s*:\s*\[[\s\S]*?\]\s*\})/;
+      match = response.match(jsonBlockRegex);
+    }
 
     if (match) {
       try {
-        const parsed = JSON.parse(match[1]);
+        // Clean up the JSON string
+        let jsonStr = match[1].trim();
+
+        // Remove any trailing commas before closing braces/brackets
+        jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
+
+        const parsed = JSON.parse(jsonStr);
+
         if (parsed.operations && Array.isArray(parsed.operations)) {
-          return parsed.operations;
+          // Validate operations
+          return parsed.operations.filter((op: any) => {
+            return (
+              op &&
+              typeof op === 'object' &&
+              (op.type === 'write' || op.type === 'delete') &&
+              typeof op.path === 'string' &&
+              (op.type === 'delete' || typeof op.content === 'string')
+            );
+          });
         }
       } catch (e) {
         console.error("Failed to parse operations JSON:", e);
+        console.error("Attempted to parse:", match[1]);
       }
+    } else {
+      console.warn("No operations block found in AI response");
     }
 
     return [];
