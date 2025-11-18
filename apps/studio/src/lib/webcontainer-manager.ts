@@ -270,9 +270,21 @@ export default App`,
 
   /**
    * Write a file to the container
+   * Automatically creates parent directories if they don't exist
    */
   static async writeFile(path: string, content: string): Promise<void> {
     const container = await this.getInstance();
+
+    // Extract directory path and create it if needed
+    const dirPath = path.split('/').slice(0, -1).join('/');
+    if (dirPath) {
+      try {
+        await container.fs.mkdir(dirPath, { recursive: true });
+      } catch (e) {
+        // Directory might already exist, ignore error
+      }
+    }
+
     await container.fs.writeFile(path, content);
   }
 
