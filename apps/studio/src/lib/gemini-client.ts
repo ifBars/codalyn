@@ -3,9 +3,10 @@
 import { GoogleGenAI } from "@google/genai";
 
 export interface FileOperation {
-  type: "write" | "delete";
-  path: string;
+  type: "write" | "delete" | "install_package";
+  path?: string;
   content?: string;
+  packages?: string[];
 }
 
 export interface AIMessage {
@@ -70,6 +71,21 @@ export class GeminiClient {
               },
               required: ["path"]
             }
+          },
+          {
+            name: "install_package",
+            description: "Install npm packages. Use this when your code requires external dependencies (like uuid, axios, date-fns, etc). Always install packages BEFORE writing files that use them.",
+            parameters: {
+              type: "object",
+              properties: {
+                packages: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "Array of package names to install (e.g., ['uuid', 'axios'])"
+                }
+              },
+              required: ["packages"]
+            }
           }
         ]
       }
@@ -79,7 +95,7 @@ export class GeminiClient {
     this.toolConfig = {
       functionCallingConfig: {
         mode: FunctionCallingMode.ANY,
-        allowedFunctionNames: ["write_file", "delete_file"]
+        allowedFunctionNames: ["write_file", "delete_file", "install_package"]
       }
     };
   }
@@ -170,6 +186,11 @@ export class GeminiClient {
         operations.push({
           type: "delete",
           path: funcCall.args.path,
+        });
+      } else if (funcCall.name === "install_package") {
+        operations.push({
+          type: "install_package",
+          packages: funcCall.args.packages,
         });
       }
     }
@@ -290,6 +311,11 @@ export class GeminiClient {
           type: "delete",
           path: funcCall.args.path,
         });
+      } else if (funcCall.name === "install_package") {
+        operations.push({
+          type: "install_package",
+          packages: funcCall.args.packages,
+        });
       }
     }
 
@@ -309,7 +335,12 @@ export class GeminiClient {
     return `You are an expert React + TypeScript + Tailwind CSS developer helping users build beautiful web applications.
 
 ## Your Capabilities
-You MUST use the write_file function to create or modify files in a Vite + React + TypeScript project. Never output code as text.
+You have three functions available:
+1. install_package - Install npm packages when your code needs external dependencies
+2. write_file - Create or modify files in the project
+3. delete_file - Remove files from the project
+
+ALWAYS use these functions instead of outputting code as text.
 
 ## Code Generation Standards
 1. **React Patterns**: Use modern functional components with hooks (useState, useEffect, etc.)
@@ -329,8 +360,17 @@ You MUST use the write_file function to create or modify files in a Vite + React
 - src/utils/*.ts - Utility functions (create as needed)
 
 ## CRITICAL: Function Calling Requirements
-You MUST use the write_file function for ALL code generation. NEVER output code as markdown or text.
+You MUST use functions for ALL operations. NEVER output code as markdown or text.
 
+### Installing Packages
+When your code needs external dependencies (like uuid, axios, date-fns, etc):
+1. Call install_package FIRST with the package names
+2. Wait for installation to complete
+3. Then write files that import those packages
+
+Example: If using uuid, call install_package(["uuid", "@types/uuid"]) before writing files
+
+### Writing Files
 For EVERY file you create or modify:
 1. Call write_file function with path and complete content
 2. Include ALL imports, types, and code - no placeholders
@@ -339,13 +379,15 @@ For EVERY file you create or modify:
 
 ## Workflow
 1. Briefly explain what you'll build (1 sentence)
-2. Call write_file for EACH file you need to create/modify
-3. Confirm completion
+2. If you need external packages, call install_package first
+3. Call write_file for EACH file you need to create/modify
+4. Confirm completion
 
 ## Example
-User: "Create a counter app"
-Response: "I'll create a simple counter with increment and decrement buttons."
-[Then IMMEDIATELY call write_file for src/App.tsx with complete code]
+User: "Create a todo app with unique IDs"
+Response: "I'll create a todo app with the uuid library for generating unique IDs."
+[Call install_package(["uuid", "@types/uuid"])]
+[Then call write_file for src/App.tsx with complete code that imports uuid]
 
 Tech Stack:
 - Vite 5.4+

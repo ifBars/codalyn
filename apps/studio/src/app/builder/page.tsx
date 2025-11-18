@@ -294,9 +294,13 @@ export default function BuilderPage() {
 
       if (operations.length > 0) {
         for (const op of operations) {
-          if (op.type === "write" && op.content) {
+          if (op.type === "install_package" && op.packages) {
+            await WebContainerManager.installPackage(op.packages);
+            console.log(`✓ Installed packages: ${op.packages.join(', ')}`);
+          } else if (op.type === "write" && op.content && op.path) {
             await WebContainerManager.writeFile(op.path, op.content);
-          } else if (op.type === "delete") {
+            console.log(`✓ Wrote ${op.path}`);
+          } else if (op.type === "delete" && op.path) {
             await WebContainerManager.rm(op.path);
           }
         }
@@ -614,15 +618,18 @@ export default function BuilderPage() {
                 )}
                 <p className="whitespace-pre-wrap">{msg.content}</p>
                 {msg.operations && msg.operations.length > 0 && (
-                  <div className="mt-3 rounded-xl bg-black/20 p-3 text-xs text-gray-200">
-                    <p className="font-semibold">
-                      {msg.operations.length} file change{msg.operations.length > 1 ? "s" : ""}
-                    </p>
-                    <ul className="mt-2 space-y-1">
-                      {msg.operations.map((op, index) => (
-                        <li key={`${op.path}-${index}`}>• {op.type} {op.path}</li>
-                      ))}
-                    </ul>
+                  <div className="mt-3 space-y-1 rounded-md bg-black/20 p-3 text-xs">
+                    <div className="font-medium opacity-70">
+                      {msg.operations.length} file operation
+                      {msg.operations.length !== 1 ? "s" : ""}:
+                    </div>
+                    {msg.operations.map((op, i) => (
+                      <div key={i} className="opacity-60">
+                        • {op.type === "install_package"
+                          ? `install ${op.packages?.join(', ')}`
+                          : `${op.type} ${op.path}`}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

@@ -98,6 +98,35 @@ export class WebContainerManager {
   }
 
   /**
+   * Install npm packages
+   */
+  static async installPackage(packages: string[]): Promise<void> {
+    const container = await this.getInstance();
+
+    console.log(`[install] Installing packages: ${packages.join(', ')}`);
+
+    const installProcess = await container.spawn("npm", [
+      "install",
+      ...packages,
+    ]);
+
+    installProcess.output.pipeTo(
+      new WritableStream({
+        write(data) {
+          console.log("[npm install]", data);
+        },
+      })
+    );
+
+    const exitCode = await installProcess.exit;
+    if (exitCode !== 0) {
+      throw new Error(`Package installation failed with exit code ${exitCode}`);
+    }
+
+    console.log(`[install] Successfully installed: ${packages.join(', ')}`);
+  }
+
+  /**
    * Read a file from the container
    */
   static async readFile(path: string): Promise<string> {
