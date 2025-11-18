@@ -241,10 +241,19 @@ export default App`,
     }
 
     console.log("Starting dev server...");
+
+    // Wait for server to be ready (set up listener first)
+    const serverReadyPromise = new Promise<string>((resolve) => {
+      container.on("server-ready", (port, url) => {
+        console.log(`Server ready on port ${port} at ${url}`);
+        resolve(url);
+      });
+    });
+
     // Start dev server
     const devProcess = await container.spawn("npm", ["run", "dev"]);
 
-    // Wait for server to be ready
+    // Log output
     devProcess.output.pipeTo(
       new WritableStream({
         write(data) {
@@ -253,19 +262,8 @@ export default App`,
       })
     );
 
-    // Wait for port to be ready
-    await new Promise<void>((resolve) => {
-      container.on("server-ready", (port, url) => {
-        console.log(`Server ready at ${url}`);
-        resolve();
-      });
-    });
-
-    const url = await new Promise<string>((resolve) => {
-      container.on("server-ready", (port, url) => {
-        resolve(url);
-      });
-    });
+    // Wait for the server URL
+    const url = await serverReadyPromise;
 
     return { container, url };
   }
