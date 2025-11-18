@@ -7,7 +7,7 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "bun run --filter=@codalyn/studio dev",
+    "dev": "npm --workspace @codalyn/studio run dev",
     "build": "bun run --filter='@codalyn/*' build",
     "lint": "bun run --filter='@codalyn/*' lint",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
