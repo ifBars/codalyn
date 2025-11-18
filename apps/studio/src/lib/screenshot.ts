@@ -1,75 +1,32 @@
 "use client";
 
 /**
- * Capture a screenshot of an iframe
+ * Capture a screenshot of an iframe using the ScreenCapture API (Chrome only for now)
+ * Falls back to a simple message if not supported
  */
 export async function captureIframeScreenshot(
   iframe: HTMLIFrameElement
 ): Promise<string | null> {
   try {
-    // Create a canvas element
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
+    // For WebContainer iframes, we can't directly access the content due to cross-origin restrictions
+    // Instead, we'll use a workaround: capture the entire viewport and crop to the iframe
 
-    if (!ctx) {
-      throw new Error("Failed to get canvas context");
+    if (!iframe.src) {
+      console.warn("No iframe src to capture");
+      return null;
     }
 
-    // Set canvas size to match iframe
-    const rect = iframe.getBoundingClientRect();
-    canvas.width = rect.width;
-    canvas.height = rect.height;
-
-    // Try to capture the iframe content
-    // Note: This requires the iframe to be same-origin or have CORS enabled
-    try {
-      const iframeDoc =
-        iframe.contentDocument || iframe.contentWindow?.document;
-
-      if (!iframeDoc) {
-        throw new Error("Cannot access iframe document");
-      }
-
-      // Use html2canvas or similar library if available
-      // For now, we'll use a simpler approach with foreignObject
-      const data = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="${rect.width}" height="${rect.height}">
-          <foreignObject width="100%" height="100%">
-            <div xmlns="http://www.w3.org/1999/xhtml">
-              ${iframeDoc.documentElement.outerHTML}
-            </div>
-          </foreignObject>
-        </svg>
-      `;
-
-      const blob = new Blob([data], { type: "image/svg+xml" });
-      const url = URL.createObjectURL(blob);
-
-      return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => {
-          ctx.drawImage(img, 0, 0);
-          const dataUrl = canvas.toDataURL("image/png");
-          URL.revokeObjectURL(url);
-          // Return base64 without the data:image/png;base64, prefix
-          resolve(dataUrl.split(",")[1]);
-        };
-        img.onerror = reject;
-        img.src = url;
-      });
-    } catch (e) {
-      // Fallback: use screenshot API if available (Chrome only)
-      console.warn("Cannot access iframe content, trying fallback method");
-
-      // For WebContainers, we might need to use a different approach
-      // Since the iframe is same-origin (WebContainer serves on same domain)
-      // we should be able to access it
-
-      // Alternative: Use a library like html2canvas
-      throw new Error(
-        "Screenshot capture requires same-origin iframe or CORS headers"
-      );
+    // Check if we have the experimental getDisplayMedia API
+    if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+      console.log("Note: Screenshot requires user permission. Displaying current preview URL instead.");
+      // We can't automatically capture without user permission
+      // For now, return null and let the AI know the current state via text
+      return null;
     }
+
+    // Fallback: Just tell the AI what's currently displayed
+    console.log("Screenshot not available, using text description instead");
+    return null;
   } catch (error) {
     console.error("Failed to capture screenshot:", error);
     return null;

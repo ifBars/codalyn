@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { WebContainerManager } from "@/lib/webcontainer-manager";
 import { GeminiClient, AIMessage, FileOperation } from "@/lib/gemini-client";
 import { captureIframeScreenshot } from "@/lib/screenshot";
-import { ArrowUp, Camera, Code, Eye, Loader2 } from "lucide-react";
+import { ArrowUp, Code, Eye, Loader2, FileCode } from "lucide-react";
 
 export default function BuilderPage() {
   const [messages, setMessages] = useState<AIMessage[]>([]);
@@ -60,27 +60,30 @@ export default function BuilderPage() {
         {
           role: "assistant",
           content:
-            "👋 Hi! I'm your AI frontend developer. I can help you build beautiful React apps with Tailwind CSS. Just describe what you want to create, and I'll build it for you!",
+            "👋 Hi! I'm your AI frontend developer. I can help you build beautiful React apps with Tailwind CSS.\n\nTry asking me to:\n• \"Create a landing page for a SaaS product\"\n• \"Add a pricing table with 3 tiers\"\n• \"Build a todo list app\"\n• \"Create a contact form with validation\"\n\nJust describe what you want, and I'll build it for you!",
         },
       ]);
     }
   };
 
   // Send message to AI
-  const handleSend = async (includeScreenshot: boolean = false) => {
+  const handleSend = async (includeContext: boolean = false) => {
     if (!input.trim() || isLoading || !geminiClientRef.current) return;
 
-    const userMessage = input.trim();
+    let userMessage = input.trim();
     setInput("");
     setIsLoading(true);
 
     try {
-      // Capture screenshot if requested
+      // Include current file context if requested
       let screenshot: string | undefined;
-      if (includeScreenshot && iframeRef.current) {
-        const captured = await captureIframeScreenshot(iframeRef.current);
-        if (captured) {
-          screenshot = captured;
+      if (includeContext) {
+        try {
+          // Get current App.tsx content to provide context
+          const appContent = await WebContainerManager.readFile("src/App.tsx");
+          userMessage = `${userMessage}\n\nCurrent src/App.tsx:\n\`\`\`tsx\n${appContent}\n\`\`\``;
+        } catch (e) {
+          console.warn("Could not read current files:", e);
         }
       }
 
@@ -243,6 +246,25 @@ export default function BuilderPage() {
               </div>
             )}
 
+            {messages.length === 1 && messages[0].role === "assistant" && !isLoading && (
+              <div className="mt-4 grid grid-cols-1 gap-2">
+                <p className="text-xs text-gray-500 mb-2">Quick start examples:</p>
+                {[
+                  "Create a modern landing page for a SaaS product",
+                  "Build a todo list app with categories",
+                  "Create a pricing table with 3 tiers",
+                ].map((example, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setInput(example)}
+                    className="rounded-lg border border-gray-700 bg-gray-800/50 px-3 py-2 text-left text-xs text-gray-300 hover:bg-gray-700 transition-colors"
+                  >
+                    {example}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {messages.map((msg, idx) => (
               <div
                 key={idx}
@@ -254,8 +276,8 @@ export default function BuilderPage() {
               >
                 {msg.screenshot && (
                   <div className="mb-2 flex items-center gap-2 text-xs opacity-70">
-                    <Camera className="h-3 w-3" />
-                    <span>Screenshot included</span>
+                    <FileCode className="h-3 w-3" />
+                    <span>File context included</span>
                   </div>
                 )}
                 <p className="whitespace-pre-wrap text-sm leading-relaxed">
@@ -309,15 +331,15 @@ export default function BuilderPage() {
                   onClick={() => handleSend(true)}
                   disabled={!input.trim() || isLoading || isInitializing}
                   className="rounded-lg bg-gray-700 p-3 text-gray-300 hover:bg-gray-600 disabled:opacity-50"
-                  title="Send with screenshot"
+                  title="Send with current file context"
                 >
-                  <Camera className="h-5 w-5" />
+                  <Code className="h-5 w-5" />
                 </button>
                 <button
                   onClick={() => handleSend(false)}
                   disabled={!input.trim() || isLoading || isInitializing}
                   className="rounded-lg bg-indigo-600 p-3 text-white hover:bg-indigo-700 disabled:opacity-50"
-                  title="Send"
+                  title="Send message"
                 >
                   <ArrowUp className="h-5 w-5" />
                 </button>

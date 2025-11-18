@@ -22,7 +22,7 @@ const nextConfig = {
               "img-src 'self' data: https: blob:",
               "font-src 'self' data:",
               "connect-src 'self' https: wss: blob:",
-              "frame-src 'self' https://*.webcontainer.io https://stackblitz.com https://*.stackblitz.com",
+              "frame-src 'self' https://*.webcontainer.io https://*.webcontainer-api.io https://stackblitz.com https://*.stackblitz.com",
               "child-src 'self' blob:",
               "worker-src 'self' blob:",
               "object-src 'none'",
