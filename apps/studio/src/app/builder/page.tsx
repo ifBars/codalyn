@@ -132,10 +132,13 @@ export default function BuilderPage() {
       if (operations.length > 0) {
         console.log("Applying operations:", operations);
         for (const op of operations) {
-          if (op.type === "write" && op.content) {
+          if (op.type === "install_package" && op.packages) {
+            await WebContainerManager.installPackage(op.packages);
+            console.log(`✓ Installed packages: ${op.packages.join(', ')}`);
+          } else if (op.type === "write" && op.content && op.path) {
             await WebContainerManager.writeFile(op.path, op.content);
             console.log(`✓ Wrote ${op.path}`);
-          } else if (op.type === "delete") {
+          } else if (op.type === "delete" && op.path) {
             await WebContainerManager.rm(op.path);
             console.log(`✓ Deleted ${op.path}`);
           }
@@ -291,7 +294,9 @@ export default function BuilderPage() {
                     </div>
                     {msg.operations.map((op, i) => (
                       <div key={i} className="opacity-60">
-                        • {op.type} {op.path}
+                        • {op.type === "install_package"
+                          ? `install ${op.packages?.join(', ')}`
+                          : `${op.type} ${op.path}`}
                       </div>
                     ))}
                   </div>
