@@ -15,6 +15,13 @@ export interface AIMessage {
   operations?: FileOperation[];
 }
 
+// Enum for function calling modes (matching SDK)
+const FunctionCallingMode = {
+  AUTO: "AUTO",
+  ANY: "ANY",
+  NONE: "NONE"
+} as const;
+
 /**
  * Client-side Gemini integration with function calling for file operations
  * Uses proper Google AI SDK (@google/genai)
@@ -23,6 +30,7 @@ export class GeminiClient {
   private ai: any;
   private modelName = "gemini-2.5-flash-lite";
   private tools: any;
+  private toolConfig: any;
 
   constructor(apiKey: string) {
     this.ai = new GoogleGenAI({ apiKey });
@@ -33,7 +41,7 @@ export class GeminiClient {
         functionDeclarations: [
           {
             name: "write_file",
-            description: "Write or update a file in the React project. Always include the complete file content - never use placeholders or '...'",
+            description: "Write or update a file in the React project. ALWAYS use this function to create or modify files. Include the complete file content - never use placeholders or '...'",
             parameters: {
               type: "object",
               properties: {
@@ -66,6 +74,14 @@ export class GeminiClient {
         ]
       }
     ];
+
+    // Configure tool calling to force function use
+    this.toolConfig = {
+      functionCallingConfig: {
+        mode: FunctionCallingMode.ANY,
+        allowedFunctionNames: ["write_file", "delete_file"]
+      }
+    };
   }
 
   /**
@@ -132,8 +148,9 @@ export class GeminiClient {
           { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
           { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
         ],
-      },
-      tools: this.tools,
+        tools: this.tools,
+        toolConfig: this.toolConfig,
+      }
     });
 
     let textResponse = "";
@@ -163,7 +180,7 @@ export class GeminiClient {
     } catch (e) {
       // If no text available (function call only), create a summary
       if (operations.length > 0) {
-        textResponse = `Applied ${operations.length} file operation(s):\n${operations.map(op => `• ${op.type} ${op.path}`).join('\n')}`;
+        textResponse = `Created ${operations.length} file(s):\n${operations.map(op => `• ${op.path}`).join('\n')}`;
       }
     }
 
@@ -237,8 +254,9 @@ export class GeminiClient {
           { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
           { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
         ],
-      },
-      tools: this.tools,
+        tools: this.tools,
+        toolConfig: this.toolConfig,
+      }
     });
 
     let fullText = "";
@@ -277,7 +295,7 @@ export class GeminiClient {
 
     // If we have operations but no text, provide a summary
     if (operations.length > 0 && !fullText) {
-      const summaryText = `Applied ${operations.length} file operation(s):\n${operations.map(op => `• ${op.type} ${op.path}`).join('\n')}`;
+      const summaryText = `Created ${operations.length} file(s):\n${operations.map(op => `• ${op.path}`).join('\n')}`;
       yield { text: summaryText, done: false };
     }
 
@@ -291,7 +309,7 @@ export class GeminiClient {
     return `You are an expert React + TypeScript + Tailwind CSS developer helping users build beautiful web applications.
 
 ## Your Capabilities
-You can write new files and modify code in a Vite + React + TypeScript project using the write_file and delete_file functions.
+You MUST use the write_file function to create or modify files in a Vite + React + TypeScript project. Never output code as text.
 
 ## Code Generation Standards
 1. **React Patterns**: Use modern functional components with hooks (useState, useEffect, etc.)
@@ -310,30 +328,31 @@ You can write new files and modify code in a Vite + React + TypeScript project u
 - src/hooks/*.ts - Custom React hooks (create as needed)
 - src/utils/*.ts - Utility functions (create as needed)
 
-## Function Calling Instructions
-IMPORTANT: Use the write_file function to write or update files. You MUST:
-1. **Always include complete file content** - never use placeholders like "// rest of code..." or "..."
-2. **Call write_file for each file** you want to create or modify
-3. **Use forward slashes** in paths (e.g., "src/components/Button.tsx")
-4. **Include all imports, types, and code** - the file must be complete and valid
+## CRITICAL: Function Calling Requirements
+You MUST use the write_file function for ALL code generation. NEVER output code as markdown or text.
+
+For EVERY file you create or modify:
+1. Call write_file function with path and complete content
+2. Include ALL imports, types, and code - no placeholders
+3. Use forward slashes in paths (e.g., "src/components/Button.tsx")
+4. Provide the ENTIRE file content, not snippets
 
 ## Workflow
-1. First, explain what you'll build (1-2 sentences)
-2. Then call write_file function(s) to create/update the necessary files
-3. Briefly confirm what was created
+1. Briefly explain what you'll build (1 sentence)
+2. Call write_file for EACH file you need to create/modify
+3. Confirm completion
 
-## Example Response Pattern
-"I'll create a beautiful landing page with a hero section and feature cards.
-
-[calls write_file for src/App.tsx with complete code]
-[calls write_file for src/components/Hero.tsx with complete code if needed]
-
-Done! I've created a modern landing page with responsive design."
+## Example
+User: "Create a counter app"
+Response: "I'll create a simple counter with increment and decrement buttons."
+[Then IMMEDIATELY call write_file for src/App.tsx with complete code]
 
 Tech Stack:
 - Vite 5.4+
 - React 18
 - TypeScript 5.5+
-- Tailwind CSS 3.4+`;
+- Tailwind CSS 3.4+
+
+Remember: ALWAYS use write_file function. NEVER output code in your text response.`;
   }
 }
