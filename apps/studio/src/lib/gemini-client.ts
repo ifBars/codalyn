@@ -1,6 +1,6 @@
 "use client";
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 
 export interface FileOperation {
   type: "write" | "delete";
@@ -16,46 +16,60 @@ export interface AIMessage {
 }
 
 /**
- * Client-side Gemini integration for frontend code generation
- * Supports vision API for screenshot analysis
+ * Client-side Gemini integration with function calling for file operations
+ * Uses proper Google AI SDK (@google/genai)
  */
 export class GeminiClient {
-  private client: GoogleGenerativeAI;
-  private model: any;
+  private ai: any;
+  private modelName = "gemini-2.5-flash-lite";
+  private tools: any;
 
   constructor(apiKey: string) {
-    this.client = new GoogleGenerativeAI(apiKey);
-    this.model = this.client.getGenerativeModel({
-      model: "gemini-2.5-flash-lite",
-      generationConfig: {
-        temperature: 0.7, // Balance creativity and consistency
-        topP: 0.95,
-        topK: 40,
-        maxOutputTokens: 8192, // Allow for longer code generation
-      },
-      safetySettings: [
-        {
-          category: "HARM_CATEGORY_HARASSMENT",
-          threshold: "BLOCK_NONE",
-        },
-        {
-          category: "HARM_CATEGORY_HATE_SPEECH",
-          threshold: "BLOCK_NONE",
-        },
-        {
-          category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-          threshold: "BLOCK_NONE",
-        },
-        {
-          category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-          threshold: "BLOCK_NONE",
-        },
-      ],
-    });
+    this.ai = new GoogleGenAI({ apiKey });
+
+    // Define file operation tools as function declarations
+    this.tools = [
+      {
+        functionDeclarations: [
+          {
+            name: "write_file",
+            description: "Write or update a file in the React project. Always include the complete file content - never use placeholders or '...'",
+            parameters: {
+              type: "object",
+              properties: {
+                path: {
+                  type: "string",
+                  description: "File path relative to project root (e.g., 'src/App.tsx', 'src/components/Button.tsx')"
+                },
+                content: {
+                  type: "string",
+                  description: "Complete file content. Must be the full file, not partial code or snippets."
+                }
+              },
+              required: ["path", "content"]
+            }
+          },
+          {
+            name: "delete_file",
+            description: "Delete a file from the project",
+            parameters: {
+              type: "object",
+              properties: {
+                path: {
+                  type: "string",
+                  description: "File path relative to project root to delete"
+                }
+              },
+              required: ["path"]
+            }
+          }
+        ]
+      }
+    ];
   }
 
   /**
-   * Generate React component code from description
+   * Generate React component code with function calling
    */
   async generateComponent(
     userMessage: string,
@@ -65,62 +79,10 @@ export class GeminiClient {
     response: string;
     operations: FileOperation[];
   }> {
-    const systemPrompt = `You are an expert React + TypeScript + Tailwind CSS developer helping users build beautiful web applications.
+    const systemPrompt = this.getSystemPrompt();
 
-## Your Capabilities
-You can read existing files, write new files, and modify code in a Vite + React + TypeScript project.
-
-## Code Generation Standards
-1. **React Patterns**: Use modern functional components with hooks (useState, useEffect, etc.)
-2. **TypeScript**: Include proper type annotations, interfaces for props
-3. **Tailwind CSS**: Use utility classes exclusively - no custom CSS files
-4. **Responsive Design**: Mobile-first approach with md:, lg: breakpoints
-5. **Accessibility**: Include ARIA labels, semantic HTML, keyboard navigation
-6. **Code Quality**: Clean, readable code with helpful comments for complex logic
-
-## File Structure
-- src/App.tsx - Main application component (modify this most often)
-- src/main.tsx - Entry point (don't modify unless specifically asked)
-- src/index.css - Tailwind imports (don't modify)
-- src/components/*.tsx - Create reusable components here
-- src/types/*.ts - TypeScript type definitions (create as needed)
-
-## Response Format
-IMPORTANT: You MUST end your response with a JSON code block containing file operations:
-
-\`\`\`json
-{
-  "operations": [
-    {
-      "type": "write",
-      "path": "src/App.tsx",
-      "content": "...complete file content here..."
-    }
-  ]
-}
-\`\`\`
-
-## Operation Rules
-1. **Always include complete file content** - never use placeholders or "..."
-2. **One operation per file** - if modifying multiple files, include multiple operations
-3. **Use forward slashes** in paths (e.g., "src/components/Button.tsx")
-4. **Escape special characters** in JSON strings (quotes, newlines, etc.)
-
-## Workflow
-1. First, briefly explain what you'll build (1-2 sentences)
-2. Then provide the complete code
-3. Finally, add the JSON operations block
-
-Tech Stack:
-- Vite 5.4+
-- React 18
-- TypeScript 5.5+
-- Tailwind CSS 3.4+`;
-
-    // Build conversation
-    const parts: any[] = [
-      { text: systemPrompt },
-    ];
+    // Build conversation parts
+    const parts: any[] = [{ text: systemPrompt }];
 
     // Add conversation history
     if (conversationHistory) {
@@ -156,23 +118,63 @@ Tech Stack:
       parts.push({ text: userMessage });
     }
 
-    const result = await this.model.generateContent({
+    const result = await this.ai.models.generateContent({
+      model: this.modelName,
       contents: [{ role: "user", parts }],
+      config: {
+        temperature: 0.7,
+        topP: 0.95,
+        topK: 40,
+        maxOutputTokens: 8192,
+        safetySettings: [
+          { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+          { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+          { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+          { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+        ],
+      },
+      tools: this.tools,
     });
 
-    const response = result.response.text();
+    let textResponse = "";
+    const operations: FileOperation[] = [];
 
-    // Extract file operations from the response
-    const operations = this.extractOperations(response);
+    // Check if response has function calls
+    const functionCalls = result.functionCalls || [];
+
+    for (const funcCall of functionCalls) {
+      if (funcCall.name === "write_file") {
+        operations.push({
+          type: "write",
+          path: funcCall.args.path,
+          content: funcCall.args.content,
+        });
+      } else if (funcCall.name === "delete_file") {
+        operations.push({
+          type: "delete",
+          path: funcCall.args.path,
+        });
+      }
+    }
+
+    // Get text from response
+    try {
+      textResponse = result.text || "";
+    } catch (e) {
+      // If no text available (function call only), create a summary
+      if (operations.length > 0) {
+        textResponse = `Applied ${operations.length} file operation(s):\n${operations.map(op => `• ${op.type} ${op.path}`).join('\n')}`;
+      }
+    }
 
     return {
-      response,
+      response: textResponse,
       operations,
     };
   }
 
   /**
-   * Stream generate with real-time updates
+   * Stream generate with real-time updates and function calling
    */
   async *streamGenerate(
     userMessage: string,
@@ -183,57 +185,7 @@ Tech Stack:
     operations?: FileOperation[];
     done: boolean;
   }> {
-    const systemPrompt = `You are an expert React + TypeScript + Tailwind CSS developer helping users build beautiful web applications.
-
-## Your Capabilities
-You can read existing files, write new files, and modify code in a Vite + React + TypeScript project.
-
-## Code Generation Standards
-1. **React Patterns**: Use modern functional components with hooks (useState, useEffect, etc.)
-2. **TypeScript**: Include proper type annotations, interfaces for props
-3. **Tailwind CSS**: Use utility classes exclusively - no custom CSS files
-4. **Responsive Design**: Mobile-first approach with md:, lg: breakpoints
-5. **Accessibility**: Include ARIA labels, semantic HTML, keyboard navigation
-6. **Code Quality**: Clean, readable code with helpful comments for complex logic
-
-## File Structure
-- src/App.tsx - Main application component (modify this most often)
-- src/main.tsx - Entry point (don't modify unless specifically asked)
-- src/index.css - Tailwind imports (don't modify)
-- src/components/*.tsx - Create reusable components here
-- src/types/*.ts - TypeScript type definitions (create as needed)
-
-## Response Format
-IMPORTANT: You MUST end your response with a JSON code block containing file operations:
-
-\`\`\`json
-{
-  "operations": [
-    {
-      "type": "write",
-      "path": "src/App.tsx",
-      "content": "...complete file content here..."
-    }
-  ]
-}
-\`\`\`
-
-## Operation Rules
-1. **Always include complete file content** - never use placeholders or "..."
-2. **One operation per file** - if modifying multiple files, include multiple operations
-3. **Use forward slashes** in paths (e.g., "src/components/Button.tsx")
-4. **Escape special characters** in JSON strings (quotes, newlines, etc.)
-
-## Workflow
-1. First, briefly explain what you'll build (1-2 sentences)
-2. Then provide the complete code
-3. Finally, add the JSON operations block
-
-Tech Stack:
-- Vite 5.4+
-- React 18
-- TypeScript 5.5+
-- Tailwind CSS 3.4+`;
+    const systemPrompt = this.getSystemPrompt();
 
     const parts: any[] = [{ text: systemPrompt }];
 
@@ -271,79 +223,117 @@ Tech Stack:
       parts.push({ text: userMessage });
     }
 
-    const result = await this.model.generateContentStream({
+    const stream = await this.ai.models.generateContentStream({
+      model: this.modelName,
       contents: [{ role: "user", parts }],
+      config: {
+        temperature: 0.7,
+        topP: 0.95,
+        topK: 40,
+        maxOutputTokens: 8192,
+        safetySettings: [
+          { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+          { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+          { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+          { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+        ],
+      },
+      tools: this.tools,
     });
 
     let fullText = "";
+    let allFunctionCalls: any[] = [];
 
-    for await (const chunk of result.stream) {
-      const text = chunk.text();
+    // Stream text chunks
+    for await (const chunk of stream) {
+      // Collect function calls from chunks
+      if (chunk.functionCalls && chunk.functionCalls.length > 0) {
+        allFunctionCalls.push(...chunk.functionCalls);
+      }
+
+      const text = chunk.text || "";
       if (text) {
         fullText += text;
         yield { text, done: false };
       }
     }
 
-    // Extract operations from the full response
-    const operations = this.extractOperations(fullText);
+    // Extract operations from function calls
+    const operations: FileOperation[] = [];
+    for (const funcCall of allFunctionCalls) {
+      if (funcCall.name === "write_file") {
+        operations.push({
+          type: "write",
+          path: funcCall.args.path,
+          content: funcCall.args.content,
+        });
+      } else if (funcCall.name === "delete_file") {
+        operations.push({
+          type: "delete",
+          path: funcCall.args.path,
+        });
+      }
+    }
+
+    // If we have operations but no text, provide a summary
+    if (operations.length > 0 && !fullText) {
+      const summaryText = `Applied ${operations.length} file operation(s):\n${operations.map(op => `• ${op.type} ${op.path}`).join('\n')}`;
+      yield { text: summaryText, done: false };
+    }
 
     yield { operations, done: true };
   }
 
   /**
-   * Extract file operations from AI response
-   * Supports multiple formats and handles edge cases
+   * Get system prompt for the AI
    */
-  private extractOperations(response: string): FileOperation[] {
-    // Try multiple patterns to find JSON operations
+  private getSystemPrompt(): string {
+    return `You are an expert React + TypeScript + Tailwind CSS developer helping users build beautiful web applications.
 
-    // Pattern 1: Standard JSON code block
-    let jsonBlockRegex = /```json\s*(\{[\s\S]*?\})\s*```/;
-    let match = response.match(jsonBlockRegex);
+## Your Capabilities
+You can write new files and modify code in a Vite + React + TypeScript project using the write_file and delete_file functions.
 
-    // Pattern 2: JSON without the 'json' language specifier
-    if (!match) {
-      jsonBlockRegex = /```\s*(\{[\s\S]*?operations[\s\S]*?\})\s*```/;
-      match = response.match(jsonBlockRegex);
-    }
+## Code Generation Standards
+1. **React Patterns**: Use modern functional components with hooks (useState, useEffect, etc.)
+2. **TypeScript**: Include proper type annotations, interfaces for props
+3. **Tailwind CSS**: Use utility classes exclusively - no custom CSS files
+4. **Responsive Design**: Mobile-first approach with md:, lg: breakpoints
+5. **Accessibility**: Include ARIA labels, semantic HTML, keyboard navigation
+6. **Code Quality**: Clean, readable code with helpful comments for complex logic
 
-    // Pattern 3: Bare JSON object (no code block)
-    if (!match) {
-      jsonBlockRegex = /(\{[\s\S]*?"operations"\s*:\s*\[[\s\S]*?\]\s*\})/;
-      match = response.match(jsonBlockRegex);
-    }
+## Project File Structure
+- src/App.tsx - Main application component (modify this most often)
+- src/main.tsx - Entry point (don't modify unless specifically asked)
+- src/index.css - Tailwind imports (don't modify)
+- src/components/*.tsx - Create reusable components here
+- src/types/*.ts - TypeScript type definitions (create as needed)
+- src/hooks/*.ts - Custom React hooks (create as needed)
+- src/utils/*.ts - Utility functions (create as needed)
 
-    if (match) {
-      try {
-        // Clean up the JSON string
-        let jsonStr = match[1].trim();
+## Function Calling Instructions
+IMPORTANT: Use the write_file function to write or update files. You MUST:
+1. **Always include complete file content** - never use placeholders like "// rest of code..." or "..."
+2. **Call write_file for each file** you want to create or modify
+3. **Use forward slashes** in paths (e.g., "src/components/Button.tsx")
+4. **Include all imports, types, and code** - the file must be complete and valid
 
-        // Remove any trailing commas before closing braces/brackets
-        jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
+## Workflow
+1. First, explain what you'll build (1-2 sentences)
+2. Then call write_file function(s) to create/update the necessary files
+3. Briefly confirm what was created
 
-        const parsed = JSON.parse(jsonStr);
+## Example Response Pattern
+"I'll create a beautiful landing page with a hero section and feature cards.
 
-        if (parsed.operations && Array.isArray(parsed.operations)) {
-          // Validate operations
-          return parsed.operations.filter((op: any) => {
-            return (
-              op &&
-              typeof op === 'object' &&
-              (op.type === 'write' || op.type === 'delete') &&
-              typeof op.path === 'string' &&
-              (op.type === 'delete' || typeof op.content === 'string')
-            );
-          });
-        }
-      } catch (e) {
-        console.error("Failed to parse operations JSON:", e);
-        console.error("Attempted to parse:", match[1]);
-      }
-    } else {
-      console.warn("No operations block found in AI response");
-    }
+[calls write_file for src/App.tsx with complete code]
+[calls write_file for src/components/Hero.tsx with complete code if needed]
 
-    return [];
+Done! I've created a modern landing page with responsive design."
+
+Tech Stack:
+- Vite 5.4+
+- React 18
+- TypeScript 5.5+
+- Tailwind CSS 3.4+`;
   }
 }
