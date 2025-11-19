@@ -43,8 +43,7 @@ export class EmbeddingService {
       });
 
       return {
-        values: response.embedding?.values || [],
-        tokenCount: response.tokenCount ? parseInt(response.tokenCount) : undefined,
+        values: response.embeddings?.[0]?.values || [],
       };
     } catch (error) {
       console.error("Error generating embedding:", error);
@@ -107,7 +106,7 @@ export function chunkText(
   overlap: number = 200
 ): string[] {
   const chunks: string[] = [];
-  
+
   // Split by lines first to preserve context
   const lines = content.split("\n");
   let currentChunk = "";
@@ -116,7 +115,7 @@ export function chunkText(
     // If adding this line would exceed max size, save current chunk
     if (currentChunk.length + line.length > maxChunkSize && currentChunk.length > 0) {
       chunks.push(currentChunk.trim());
-      
+
       // Start new chunk with overlap from previous chunk
       const overlapText = currentChunk.slice(-overlap);
       currentChunk = overlapText + "\n" + line;

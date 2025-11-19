@@ -25,7 +25,11 @@ export class WebContainerSandbox implements SandboxInterface {
 
     async mkdir(path: string, options?: { recursive?: boolean }): Promise<void> {
         const container = await WebContainerManager.getInstance();
-        return container.fs.mkdir(path, options);
+        if (options?.recursive) {
+            await container.fs.mkdir(path, { recursive: true });
+        } else {
+            await container.fs.mkdir(path);
+        }
     }
 
     async glob(pattern: string): Promise<string[]> {
@@ -114,6 +118,31 @@ export class WebContainerSandbox implements SandboxInterface {
             type: "webcontainer",
             ready: true,
         };
+    }
+
+    async installPackage(packages: string[], options?: { dev?: boolean }): Promise<{ success: boolean; output?: string; error?: string }> {
+        try {
+            console.log(`[AI Debug] WebContainerSandbox.installPackage() - Installing: ${packages.join(', ')} (dev: ${options?.dev ?? false})`);
+            const packageJson = await WebContainerManager.installPackage(packages, { dev: options?.dev ?? false });
+            
+            if (packageJson) {
+                return {
+                    success: true,
+                    output: `Successfully installed packages: ${packages.join(', ')}`,
+                };
+            } else {
+                return {
+                    success: false,
+                    error: "Package installation completed but package.json could not be read",
+                };
+            }
+        } catch (error) {
+            console.error(`[AI Debug] WebContainerSandbox.installPackage() - Error:`, error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : "Unknown error during package installation",
+            };
+        }
     }
 
     // Helper methods

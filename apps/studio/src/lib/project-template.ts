@@ -214,7 +214,9 @@ const flattenTree = (tree: FileSystemTree, prefix = ""): FlatFileMap => {
   for (const [name, entry] of Object.entries(tree)) {
     const path = prefix ? `${prefix}/${name}` : name;
     if ("file" in entry) {
-      files[path] = entry.file.contents as string;
+      if ("contents" in entry.file) {
+        files[path] = entry.file.contents as string;
+      }
     } else if ("directory" in entry) {
       Object.assign(files, flattenTree(entry.directory, path));
     }

@@ -11,15 +11,27 @@ import {
 } from "react";
 import { ArrowUp, ChevronDown, FileCode, Loader2 } from "lucide-react";
 import Preview from "@/components/work/preview";
+import { MarkdownContent } from "@/components/ui/markdown-content";
 
 import {
-  GeminiClient,
+  Agent,
   type GeminiModelId,
-  AIMessage,
-  FileOperation,
+  type AIMessage,
+  type FileOperation,
   DEFAULT_GEMINI_MODEL,
   GEMINI_MODEL_OPTIONS,
-} from "@/lib/gemini-client";
+  type Message,
+  CompositeToolSet,
+  CodalynToolSet,
+  BrowserToolSet,
+  VectorStoreToolSet,
+  WebContainerSandbox,
+  GeminiAdapter,
+  ConversationMemory,
+  getDefaultSystemPrompt,
+  extractFileOperations,
+  filterValidFileOperations,
+} from "@/lib/ai";
 import {
   StoredProject,
   applyFileOperationsToProject,
@@ -85,7 +97,7 @@ export default function BuilderPage() {
   );
   const [showScreenshotTip, setShowScreenshotTip] = useState(false);
 
-  const geminiClientRef = useRef<GeminiClient | null>(null);
+  const agentRef = useRef<Agent | null>(null);
   const vectorStoreRef = useRef<VectorStore | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -194,15 +206,44 @@ export default function BuilderPage() {
     model: GeminiModelId,
     resetMessages = false
   ) => {
-    geminiClientRef.current = new GeminiClient(apiKey, model);
-
     // Initialize vector store if needed
     if (!vectorStoreRef.current) {
       vectorStoreRef.current = new VectorStore(apiKey);
     }
 
-    // Always set vector store on the client
-    geminiClientRef.current.setVectorStore(vectorStoreRef.current);
+    // Create sandbox
+    const sandbox = new WebContainerSandbox();
+
+    // Create tool sets
+    const codalynTools = new CodalynToolSet(sandbox);
+    const browserTools = new BrowserToolSet(); // Uses getGlobalIframe() internally
+    const vectorStoreTools = new VectorStoreToolSet({
+      vectorStore: vectorStoreRef.current,
+    });
+
+    // Combine tool sets
+    const compositeTools = new CompositeToolSet([
+      codalynTools,
+      browserTools,
+      vectorStoreTools,
+    ]);
+
+    // Create memory with system prompt
+    const memory = new ConversationMemory(getDefaultSystemPrompt());
+
+    // Create adapter
+    const adapter = new GeminiAdapter({
+      apiKey,
+      modelName: model,
+    });
+
+    // Create agent
+    agentRef.current = new Agent({
+      modelAdapter: adapter,
+      tools: compositeTools,
+      memory,
+      maxIterations: 20,
+    });
 
     setIsGeminiReady(true);
     if (resetMessages) {
@@ -215,6 +256,18 @@ export default function BuilderPage() {
     if (vectorStoreRef.current && activeProject && isGeminiReady) {
       try {
         vectorStoreRef.current.setProjectFiles(activeProject.files);
+        // Update vector store tool set if agent exists
+        if (agentRef.current) {
+          const agent = agentRef.current as any;
+          const compositeTools = agent.config.tools;
+          if (compositeTools && compositeTools.toolSets) {
+            for (const toolSet of compositeTools.toolSets) {
+              if (toolSet instanceof VectorStoreToolSet) {
+                toolSet.setVectorStore(vectorStoreRef.current);
+              }
+            }
+          }
+        }
       } catch (error) {
         console.warn("Failed to set project files in vector store:", error);
       }
@@ -253,7 +306,7 @@ export default function BuilderPage() {
 
   const handleClearApiKey = () => {
     clearStoredGeminiKey();
-    geminiClientRef.current = null;
+    agentRef.current = null;
     setIsGeminiReady(false);
     setIsKeyModalOpen(true);
     setGeminiApiKey("");
@@ -282,9 +335,37 @@ export default function BuilderPage() {
     }
   };
 
+  // Helper to convert AIMessage[] to Message[]
+  const convertAIMessagesToMessages = (aiMessages: AIMessage[]): Message[] => {
+    return aiMessages.map((msg) => {
+      if (msg.role === "user") {
+        return {
+          role: "user",
+          content: msg.content,
+        };
+      } else {
+        return {
+          role: "assistant",
+          content: msg.content,
+        };
+      }
+    });
+  };
+
+  // Helper to convert Message[] to AIMessage[]
+  const convertMessagesToAIMessages = (messages: Message[]): AIMessage[] => {
+    return messages
+      .filter((msg) => msg.role === "user" || msg.role === "assistant")
+      .map((msg) => ({
+        role: msg.role as "user" | "assistant",
+        content: msg.content || "",
+      }));
+  };
+
+
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
-    if (!geminiClientRef.current) {
+    if (!agentRef.current) {
       setIsKeyModalOpen(true);
       return;
     }
@@ -302,17 +383,26 @@ export default function BuilderPage() {
       const history = [...messages, userMsg];
       setMessages([...history, { role: "assistant", content: "" }]);
 
+      // Restore conversation history to agent memory
+      // The agent's runStream will add the user message, so we restore previous messages only
+      agentRef.current.reset();
+      const agentMemory = (agentRef.current as any).config.memory;
+      // Restore all previous messages (excluding the new user message which runStream will add)
+      const historyMessages = convertAIMessagesToMessages(messages);
+      for (const msg of historyMessages) {
+        agentMemory.addMessage(msg);
+      }
+
       let fullResponse = "";
       let operations: FileOperation[] = [];
       let capturedScreenshot: string | undefined = undefined;
+      const toolCalls: any[] = [];
+      const toolResults: any[] = [];
 
-      for await (const chunk of geminiClientRef.current.streamGenerate(
-        userMessage,
-        undefined, // No manual screenshot - AI will capture if needed
-        history
-      )) {
-        if (chunk.text) {
-          fullResponse += chunk.text;
+      // Process agent stream
+      for await (const event of agentRef.current.runStream(userMessage)) {
+        if (event.type === "thought") {
+          fullResponse += event.content;
           setMessages((prev) => {
             const next = [...prev];
             const lastMsg = next[next.length - 1];
@@ -320,38 +410,54 @@ export default function BuilderPage() {
               next[next.length - 1] = {
                 ...lastMsg,
                 content: fullResponse,
-                screenshot: capturedScreenshot || lastMsg.screenshot
+                screenshot: capturedScreenshot || lastMsg.screenshot,
               };
             }
             return next;
           });
-        }
-
-        if (chunk.screenshot) {
-          capturedScreenshot = chunk.screenshot;
-          setShowScreenshotTip(false); // Hide tip once screenshot is captured
-          // Update the last message with screenshot
+        } else if (event.type === "tool_call") {
+          toolCalls.push(event.toolCall);
+          // Show tip when AI requests a screenshot
+          if (event.toolCall.name === "capture_screenshot") {
+            setShowScreenshotTip(true);
+          }
+        } else if (event.type === "tool_result") {
+          toolResults.push(event.toolResult);
+          
+          // Handle screenshot capture
+          if (event.toolResult.name === "capture_screenshot" && event.toolResult.success) {
+            const screenshot = event.toolResult.result?.screenshot;
+            if (screenshot) {
+              capturedScreenshot = screenshot;
+              setShowScreenshotTip(false);
+              setMessages((prev) => {
+                const next = [...prev];
+                const lastMsg = next[next.length - 1];
+                if (lastMsg) {
+                  next[next.length - 1] = { ...lastMsg, screenshot };
+                }
+                return next;
+              });
+            }
+          }
+        } else if (event.type === "response") {
+          fullResponse = event.content;
           setMessages((prev) => {
             const next = [...prev];
             const lastMsg = next[next.length - 1];
             if (lastMsg) {
-              next[next.length - 1] = { ...lastMsg, screenshot: chunk.screenshot };
+              next[next.length - 1] = {
+                ...lastMsg,
+                content: fullResponse,
+                screenshot: capturedScreenshot || lastMsg.screenshot,
+              };
             }
             return next;
           });
-        }
-
-        if (chunk.operations) {
-          operations = chunk.operations;
-        }
-
-        // Show tip when AI requests a screenshot (detect function call in text)
-        if (chunk.text && (chunk.text.toLowerCase().includes('capture') || chunk.text.toLowerCase().includes('screenshot'))) {
-          // Check if this is about capturing a screenshot (not just mentioning it)
-          const screenshotKeywords = ['capture screenshot', 'taking screenshot', 'capturing', 'screenshot of'];
-          if (screenshotKeywords.some(keyword => chunk.text.toLowerCase().includes(keyword))) {
-            setShowScreenshotTip(true);
-          }
+        } else if (event.type === "done") {
+          // Extract file operations from tool calls and results using improved parser
+          const extractedOps = extractFileOperations(toolCalls, toolResults);
+          operations = filterValidFileOperations(extractedOps);
         }
       }
 
@@ -359,17 +465,8 @@ export default function BuilderPage() {
         const operationErrors: string[] = [];
         const successfulOps: string[] = [];
 
-        // Filter out invalid operations before processing
-        const validOperations = operations.filter(op => {
-          if (op.type === "write") {
-            return op.path && op.content;
-          } else if (op.type === "delete") {
-            return op.path;
-          } else if (op.type === "install_package") {
-            return op.packages && Array.isArray(op.packages) && op.packages.length > 0;
-          }
-          return false;
-        });
+        // Operations are already validated by filterValidFileOperations
+        const validOperations = operations;
 
         // Process operations, continuing even if some fail
         // Track if we need to save updated package.json
@@ -426,26 +523,16 @@ export default function BuilderPage() {
           }
         }
 
-        // Add summary message to the conversation
-        const summaryParts: string[] = [];
-        if (successfulOps.length > 0) {
-          summaryParts.push(`✓ Completed ${successfulOps.length} operation(s):`);
-          successfulOps.forEach(op => summaryParts.push(`  • ${op}`));
-        }
+        // Only add error summary if there are failures (let AI provide human-readable success summary)
         if (operationErrors.length > 0) {
-          summaryParts.push(`\n⚠ ${operationErrors.length} operation(s) failed:`);
-          operationErrors.forEach(err => summaryParts.push(`  • ${err}`));
-        }
-
-        if (summaryParts.length > 0) {
-          const summaryText = summaryParts.join('\n');
+          const errorSummary = `⚠ ${operationErrors.length} operation(s) failed:\n${operationErrors.map(err => `  • ${err}`).join('\n')}`;
           setMessages((prev) => {
             const next = [...prev];
             const lastMsg = next[next.length - 1];
             if (lastMsg) {
               next[next.length - 1] = {
                 ...lastMsg,
-                content: lastMsg.content ? `${lastMsg.content}\n\n${summaryText}` : summaryText,
+                content: lastMsg.content ? `${lastMsg.content}\n\n${errorSummary}` : errorSummary,
               };
             }
             return next;
@@ -609,7 +696,7 @@ export default function BuilderPage() {
     !isLoading &&
     !isInitializing &&
     Boolean(input.trim()) &&
-    geminiClientRef.current;
+    agentRef.current;
 
   return (
     <div className="flex h-screen flex-col bg-background">
@@ -776,7 +863,11 @@ export default function BuilderPage() {
                     <span>Context attached</span>
                   </div>
                 )}
-                <p className="whitespace-pre-wrap">{msg.content}</p>
+                {msg.role === "assistant" ? (
+                  <MarkdownContent content={msg.content} />
+                ) : (
+                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                )}
                 {msg.operations && msg.operations.length > 0 && (
                   <div className="mt-2 space-y-0.5 rounded bg-background/50 p-2 text-[10px]">
                     <div className="font-medium opacity-70">

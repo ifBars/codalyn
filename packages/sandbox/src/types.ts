@@ -47,6 +47,9 @@ export interface SandboxInterface {
     }
   ): Promise<SandboxProcess>;
 
+  // Package management
+  installPackage?(packages: string[], options?: { dev?: boolean }): Promise<{ success: boolean; output?: string; error?: string }>;
+
   // Port management
   getPorts(): Promise<SandboxPort[]>;
   openPort(port: number, protocol?: "http" | "https"): Promise<void>;

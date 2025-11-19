@@ -2,8 +2,8 @@
  * Gemini ModelAdapter implementation
  */
 
-import { GoogleGenAI } from "@google/genai";
-import type { GenerateContentRequest } from "@google/genai";
+import { GoogleGenAI, FunctionCallingConfigMode } from "@google/genai";
+
 import {
     ModelAdapter,
     ModelResponse,
@@ -12,6 +12,8 @@ import {
     ToolDefinition,
     ToolCall,
 } from "../core/types";
+import { filterResponseText, containsCodeWithoutTools } from "../core/filters";
+import { parseToolCalls } from "../core/parser";
 
 export interface GeminiAdapterConfig {
     apiKey: string;
@@ -24,7 +26,7 @@ export class GeminiAdapter implements ModelAdapter {
 
     constructor(config: GeminiAdapterConfig) {
         this.client = new GoogleGenAI({ apiKey: config.apiKey });
-        this.modelName = config.modelName || "gemini-2.0-flash-exp";
+        this.modelName = config.modelName || "gemini-2.5-flash";
     }
 
     getModelName(): string {
@@ -32,41 +34,86 @@ export class GeminiAdapter implements ModelAdapter {
     }
 
     async generate(messages: Message[], tools: ToolDefinition[]): Promise<ModelResponse> {
-        const contents = this.convertMessagesToGemini(messages);
+        console.log("[AI Debug] GeminiAdapter.generate() - Starting");
+        console.log(`[AI Debug] Model: ${this.modelName}`);
+        console.log(`[AI Debug] Input messages: ${messages.length}`);
+        console.log(`[AI Debug] Available tools: ${tools.length}`);
+        if (tools.length > 0) {
+            console.log(`[AI Debug] Tool names:`, tools.map(t => t.name));
+        }
 
-        const request: GenerateContentRequest = {
+        const contents = this.convertMessagesToGemini(messages);
+        console.log(`[AI Debug] Converted to ${contents.length} Gemini content items`);
+
+        // Convert all tools to function declarations
+        const functionDeclarations = tools.map(t => this.convertToolToGeminiFunction(t));
+
+        const request = {
+            model: this.modelName,
             contents,
             config: {
-                tools: tools.length > 0 ? tools.map(t => this.convertToolToGemini(t)) : undefined,
+                tools: tools.length > 0 ? [{ functionDeclarations }] : undefined,
+                toolConfig: tools.length > 0 ? {
+                    functionCallingConfig: {
+                        mode: FunctionCallingConfigMode.AUTO,
+                        // Note: allowedFunctionNames is only valid with ANY mode, not AUTO
+                    }
+                } : undefined,
             },
         };
 
-        const result = await this.client.models.generateContent(this.modelName, request);
+        console.log("[AI Debug] Calling Gemini API...");
+        const apiStartTime = Date.now();
+        const result = await this.client.models.generateContent(request);
+        const apiDuration = Date.now() - apiStartTime;
+        console.log(`[AI Debug] Gemini API response received (${apiDuration}ms)`);
 
-        // Extract text
+        // Extract text - try direct property first, then fall back to parts
         let text = "";
         try {
-            if (result.candidates && result.candidates[0]?.content?.parts) {
+            if ((result as any).text) {
+                text = (result as any).text;
+                console.log(`[AI Debug] Extracted text from result.text (${text.length} chars)`);
+            } else if (result.candidates && result.candidates[0]?.content?.parts) {
                 const textParts = result.candidates[0].content.parts.filter((part: any) => part.text);
                 text = textParts.map((part: any) => part.text).join("");
+                console.log(`[AI Debug] Extracted text from candidates[0].content.parts (${text.length} chars, ${textParts.length} parts)`);
+            } else {
+                console.log("[AI Debug] No text found in response");
             }
         } catch (e) {
-            // Text extraction failed
+            console.warn("[AI Debug] Error extracting text:", e);
         }
 
-        // Extract tool calls
-        const toolCalls: ToolCall[] = [];
-        if (result.candidates && result.candidates[0]?.content?.parts) {
-            for (const part of result.candidates[0].content.parts) {
-                if ((part as any).functionCall) {
-                    const fc = (part as any).functionCall;
-                    toolCalls.push({
-                        name: fc.name,
-                        args: fc.args as Record<string, any>,
-                    });
-                }
+        // Extract tool calls using improved parser
+        const toolCalls = parseToolCalls(result);
+        if (toolCalls.length > 0) {
+            console.log(`[AI Debug] Parsed ${toolCalls.length} tool call(s)`, toolCalls.map(tc => tc.name));
+        } else {
+            console.log("[AI Debug] No tool calls found in response");
+        }
+
+        // Apply response filtering
+        const hasToolCalls = toolCalls.length > 0;
+        if (text) {
+            const originalText = text;
+            text = filterResponseText(text);
+            if (text !== originalText) {
+                console.log(`[AI Debug] Response text filtered (${originalText.length} -> ${text.length} chars)`);
+            }
+
+            // Reject responses that contain code without tool calls
+            if (containsCodeWithoutTools(text, hasToolCalls)) {
+                console.warn('[AI Debug] Rejected response containing code without tool calls');
+                text = 'ERROR: Code was output directly instead of using tools. Please use the write_file tool to create or modify files. Code must never be output in text responses.';
             }
         }
+
+        console.log(`[AI Debug] GeminiAdapter.generate() - Returning response:`, {
+            textLength: text?.length || 0,
+            toolCallsCount: toolCalls.length,
+            finishReason: toolCalls.length > 0 ? "tool_calls" : "stop"
+        });
 
         return {
             content: text,
@@ -79,22 +126,47 @@ export class GeminiAdapter implements ModelAdapter {
         messages: Message[],
         tools: ToolDefinition[]
     ): AsyncGenerator<ModelStreamChunk> {
-        const contents = this.convertMessagesToGemini(messages);
+        console.log("[AI Debug] GeminiAdapter.generateStream() - Starting");
+        console.log(`[AI Debug] Model: ${this.modelName}`);
+        console.log(`[AI Debug] Input messages: ${messages.length}`);
+        console.log(`[AI Debug] Available tools: ${tools.length}`);
+        if (tools.length > 0) {
+            console.log(`[AI Debug] Tool names:`, tools.map(t => t.name));
+        }
 
-        const request: GenerateContentRequest = {
+        const contents = this.convertMessagesToGemini(messages);
+        console.log(`[AI Debug] Converted to ${contents.length} Gemini content items`);
+
+        // Convert all tools to function declarations
+        const functionDeclarations = tools.map(t => this.convertToolToGeminiFunction(t));
+
+        const request = {
+            model: this.modelName,
             contents,
             config: {
-                tools: tools.length > 0 ? tools.map(t => this.convertToolToGemini(t)) : undefined,
+                tools: tools.length > 0 ? [{ functionDeclarations }] : undefined,
+                toolConfig: tools.length > 0 ? {
+                    functionCallingConfig: {
+                        mode: FunctionCallingConfigMode.AUTO,
+                        // Note: allowedFunctionNames is only valid with ANY mode, not AUTO
+                    }
+                } : undefined,
             },
         };
 
-        const stream = await this.client.models.generateContentStream(this.modelName, request);
+        console.log("[AI Debug] Starting Gemini API stream...");
+        const streamStartTime = Date.now();
+        const stream = await this.client.models.generateContentStream(request);
+        let chunkCount = 0;
 
         for await (const chunk of stream) {
-            // Extract text
+            chunkCount++;
+            // Extract text - try direct property first, then fall back to parts
             let text = "";
             try {
-                if (chunk.candidates && chunk.candidates[0]?.content?.parts) {
+                if ((chunk as any).text) {
+                    text = (chunk as any).text;
+                } else if (chunk.candidates && chunk.candidates[0]?.content?.parts) {
                     const textParts = chunk.candidates[0].content.parts.filter((part: any) => part.text);
                     text = textParts.map((part: any) => part.text).join("");
                 }
@@ -106,22 +178,23 @@ export class GeminiAdapter implements ModelAdapter {
                 yield { type: "text", content: text };
             }
 
-            // Extract tool calls
-            if (chunk.candidates && chunk.candidates[0]?.content?.parts) {
-                for (const part of chunk.candidates[0].content.parts) {
-                    if ((part as any).functionCall) {
-                        const fc = (part as any).functionCall;
-                        yield {
-                            type: "tool_call",
-                            toolCall: {
-                                name: fc.name,
-                                args: fc.args as Record<string, any>,
-                            },
-                        };
-                    }
+            // Extract tool calls from chunk using improved parser
+            try {
+                const chunkToolCalls = parseToolCalls(chunk);
+                for (const toolCall of chunkToolCalls) {
+                    console.log(`[AI Debug] Stream chunk ${chunkCount}: function call - ${toolCall.name}`);
+                    yield {
+                        type: "tool_call",
+                        toolCall,
+                    };
                 }
+            } catch (e) {
+                console.warn("[AI Debug] Error extracting function calls from chunk:", e);
             }
         }
+        
+        const streamDuration = Date.now() - streamStartTime;
+        console.log(`[AI Debug] GeminiAdapter.generateStream() - Completed (${streamDuration}ms, ${chunkCount} chunks)`);
     }
 
     /**
@@ -195,14 +268,13 @@ export class GeminiAdapter implements ModelAdapter {
 
     /**
      * Convert our ToolDefinition format to Gemini's function declaration format
+     * Returns a single FunctionDeclaration object (not wrapped in functionDeclarations array)
      */
-    private convertToolToGemini(tool: ToolDefinition): any {
+    private convertToolToGeminiFunction(tool: ToolDefinition): any {
         return {
-            functionDeclarations: [{
-                name: tool.name,
-                description: tool.description,
-                parameters: tool.parameters,
-            }],
+            name: tool.name,
+            description: tool.description,
+            parametersJsonSchema: tool.parameters,
         };
     }
 }

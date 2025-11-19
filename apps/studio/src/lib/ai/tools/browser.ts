@@ -4,32 +4,7 @@
  */
 
 import { ToolSet, ToolDefinition, ToolCall, ToolResult } from "../core/types";
-
-// Import screenshot utilities from gemini-client
-// We'll extract these to a separate utility file
-async function captureIframeScreenshot(iframe: HTMLIFrameElement): Promise<string | null> {
-    const html2canvas = (await import("html2canvas")).default;
-
-    try {
-        const iframeDocument = iframe.contentDocument || iframe.contentWindow?.document;
-        if (!iframeDocument || !iframeDocument.body) {
-            return null;
-        }
-
-        const canvas = await html2canvas(iframeDocument.body, {
-            allowTaint: true,
-            useCORS: true,
-            logging: false,
-            width: iframeDocument.body.scrollWidth,
-            height: iframeDocument.body.scrollHeight,
-        });
-
-        return canvas.toDataURL("image/png").split(",")[1]; // Return base64 without prefix
-    } catch (error) {
-        console.error("Screenshot capture error:", error);
-        return null;
-    }
-}
+import { captureIframeScreenshot, getGlobalIframe } from "../../screenshot";
 
 export interface BrowserToolSetConfig {
     iframeRef?: React.RefObject<HTMLIFrameElement>;
@@ -63,6 +38,8 @@ export class BrowserToolSet implements ToolSet {
 
                 if (this.iframeRef?.current) {
                     iframe = this.iframeRef.current;
+                } else {
+                    iframe = getGlobalIframe();
                 }
 
                 if (!iframe) {

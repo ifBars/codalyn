@@ -1,6 +1,6 @@
 "use client";
 
-import type { FileOperation, GeminiModelId } from "./gemini-client";
+import type { FileOperation, GeminiModelId } from "./ai";
 import { defaultProjectFileMap } from "./project-template";
 
 const PROJECTS_KEY = "codalyn.projects.v1";
@@ -156,10 +156,10 @@ export const applyFileOperationsToProject = (
   let changed = false;
 
   for (const operation of operations) {
-    if (operation.type === "write" && operation.content) {
+    if (operation.type === "write" && operation.content && operation.path) {
       project.files[operation.path] = operation.content;
       changed = true;
-    } else if (operation.type === "delete") {
+    } else if (operation.type === "delete" && operation.path) {
       if (project.files[operation.path]) {
         delete project.files[operation.path];
         changed = true;

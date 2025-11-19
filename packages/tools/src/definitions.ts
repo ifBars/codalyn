@@ -623,8 +623,7 @@ export const dbQueryTool: ToolDefinition = {
       },
       filters: {
         type: "object",
-        description: "Filter conditions",
-        additionalProperties: { type: "any" },
+        description: "Filter conditions (key-value pairs for filtering rows)",
       },
       limit: {
         type: "number",
@@ -671,8 +670,7 @@ export const dbUpdateTool: ToolDefinition = {
       },
       filters: {
         type: "object",
-        description: "Filter conditions",
-        additionalProperties: { type: "any" },
+        description: "Filter conditions (key-value pairs for filtering rows)",
       },
     },
     required: ["table", "values", "filters"],
@@ -691,8 +689,7 @@ export const dbDeleteTool: ToolDefinition = {
       },
       filters: {
         type: "object",
-        description: "Filter conditions",
-        additionalProperties: { type: "any" },
+        description: "Filter conditions (key-value pairs for filtering rows)",
       },
     },
     required: ["table", "filters"],

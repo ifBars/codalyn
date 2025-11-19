@@ -173,3 +173,78 @@ export interface AgentResult {
     iterations: number;
     messages: Message[];
 }
+
+/**
+ * Compatibility types for UI integration
+ * These types match the format expected by the builder UI components
+ */
+
+/**
+ * Gemini model identifier
+ */
+export type GeminiModelId =
+    | "gemini-2.5-flash"
+    | "gemini-2.5-flash-lite"
+    | "gemini-flash-lite-latest"
+    | "gemini-2.5-pro"
+    | "gemini-flash-latest";
+
+/**
+ * File operation for compatibility with old system
+ */
+export interface FileOperation {
+    type: "write" | "delete" | "install_package";
+    path?: string;
+    content?: string;
+    packages?: string[];
+}
+
+/**
+ * AI message format for compatibility with old system
+ */
+export interface AIMessage {
+    role: "user" | "assistant";
+    content: string;
+    screenshot?: string; // base64 encoded image
+    operations?: FileOperation[];
+}
+
+/**
+ * Gemini model options for UI selection
+ */
+export const GEMINI_MODEL_OPTIONS: Array<{
+    id: GeminiModelId;
+    label: string;
+    description: string;
+}> = [
+    {
+        id: "gemini-2.5-flash",
+        label: "Gemini 2.5 Flash",
+        description: "Fast, capable generalist for most UI builds.",
+    },
+    {
+        id: "gemini-2.5-flash-lite",
+        label: "Gemini 2.5 Flash Lite",
+        description: "Default balance of speed + quality.",
+    },
+    {
+        id: "gemini-flash-latest",
+        label: "Gemini 2.5 Flash (latest)",
+        description: "Cutting edge lite model with latest weights.",
+    },
+    {
+        id: "gemini-flash-lite-latest",
+        label: "Gemini 2.5 Flash Lite (latest)",
+        description: "Lightweight model ideal for rapid prototyping.",
+    },
+    {
+        id: "gemini-2.5-pro",
+        label: "Gemini 2.5 Pro",
+        description: "Highest quality responses, slower latency.",
+    },
+];
+
+/**
+ * Default Gemini model
+ */
+export const DEFAULT_GEMINI_MODEL: GeminiModelId = "gemini-2.5-flash-lite";

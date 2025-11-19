@@ -1,0 +1,138 @@
+/**
+ * WebContainer sandbox implementation
+ */
+export class WebContainerSandbox {
+    webcontainer = null;
+    ports = new Map();
+    async init(options) {
+        const { WebContainer } = await import("@webcontainer/api");
+        this.webcontainer = await WebContainer.boot();
+        // Note: options.files would need to be converted to FileSystemTree format
+        // For now, this is a placeholder - actual file mounting would require proper conversion
+    }
+    async readFile(path) {
+        if (!this.webcontainer)
+            throw new Error("Sandbox not initialized");
+        const file = await this.webcontainer.fs.readFile(path, "utf-8");
+        return file;
+    }
+    async writeFile(path, content) {
+        if (!this.webcontainer)
+            throw new Error("Sandbox not initialized");
+        // Normalize path - ensure consistent forward slashes
+        // Remove leading slash if present (WebContainer uses relative paths from root)
+        const normalizedPath = path.replace(/^\/+/, '').replace(/\/+/g, '/');
+        // Extract directory path and create it if needed
+        const dirPath = normalizedPath.split('/').slice(0, -1).join('/');
+        if (dirPath) {
+            // Create parent directories recursively
+            try {
+                await this.webcontainer.fs.mkdir(dirPath, { recursive: true });
+            }
+            catch (e) {
+                // If recursive fails, try creating directories one by one as fallback
+                const parts = dirPath.split('/').filter(Boolean);
+                let currentPath = '';
+                for (const part of parts) {
+                    currentPath = currentPath ? `${currentPath}/${part}` : part;
+                    try {
+                        await this.webcontainer.fs.mkdir(currentPath);
+                    }
+                    catch (dirError) {
+                        // Only ignore "directory already exists" errors
+                        const isExistsError = dirError?.code === 'EEXIST' ||
+                            dirError?.message?.includes('already exists') ||
+                            dirError?.message?.includes('EEXIST');
+                        if (!isExistsError) {
+                            throw dirError;
+                        }
+                    }
+                }
+            }
+        }
+        // Write the file
+        await this.webcontainer.fs.writeFile(normalizedPath, content);
+    }
+    async readdir(path) {
+        if (!this.webcontainer)
+            throw new Error("Sandbox not initialized");
+        const entries = await this.webcontainer.fs.readdir(path, { withFileTypes: true });
+        return entries.map((e) => e.name);
+    }
+    async deletePath(path, options) {
+        if (!this.webcontainer)
+            throw new Error("Sandbox not initialized");
+        await this.webcontainer.fs.rm(path, { recursive: options?.recursive ?? false });
+    }
+    async mkdir(path, options) {
+        if (!this.webcontainer)
+            throw new Error("Sandbox not initialized");
+        if (options?.recursive) {
+            await this.webcontainer.fs.mkdir(path, { recursive: true });
+        }
+        else {
+            await this.webcontainer.fs.mkdir(path);
+        }
+    }
+    async glob(pattern) {
+        // Simple glob implementation - can be enhanced later
+        const allFiles = [];
+        const walk = async (dir) => {
+            const entries = await this.readdir(dir);
+            for (const entry of entries) {
+                const fullPath = `${dir}/${entry}`;
+                try {
+                    await this.readFile(fullPath);
+                    allFiles.push(fullPath);
+                }
+                catch {
+                    // Directory, recurse
+                    await walk(fullPath);
+                }
+            }
+        };
+        await walk(".");
+        // Simple pattern matching - enhance with proper glob library if needed
+        return allFiles.filter((f) => {
+            if (pattern.includes("*")) {
+                const regex = new RegExp(pattern.replace(/\*/g, ".*"));
+                return regex.test(f);
+            }
+            return f.includes(pattern);
+        });
+    }
+    async runCommand(command, options) {
+        if (!this.webcontainer)
+            throw new Error("Sandbox not initialized");
+        const process = await this.webcontainer.spawn("sh", ["-c", command], {
+            cwd: options?.cwd,
+            env: options?.env,
+        });
+        // Generate a unique ID since WebContainer processes don't expose pid
+        const processId = crypto.randomUUID();
+        return {
+            id: processId,
+            kill: async () => {
+                await process.kill();
+            },
+            output: process.output,
+        };
+    }
+    async getPorts() {
+        return Array.from(this.ports.values());
+    }
+    async openPort(port, protocol = "http") {
+        this.ports.set(port, { port, protocol });
+    }
+    async getInfo() {
+        return {
+            type: "webcontainer",
+            ready: this.webcontainer !== null,
+        };
+    }
+    async destroy() {
+        // WebContainer cleanup handled by browser
+        this.webcontainer = null;
+        this.ports.clear();
+    }
+}

@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Maximize2, Share2, Github, ArrowUpRight, Lock, X, AlertCircle, Sparkles, RefreshCw } from "lucide-react";
+import { Maximize2, Share2, Github, ArrowUpRight, Lock, X, AlertCircle, Sparkles, RefreshCw, Smartphone, Tablet, Monitor, Minimize2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { WebContainerManager } from "@/lib/webcontainer-manager";
 import { getProjectById, applyFileOperationsToProject } from "@/lib/project-storage";
 import { registerIframe } from "@/lib/screenshot";
@@ -17,6 +18,8 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [showErrorPopup, setShowErrorPopup] = useState(false);
+  const [viewMode, setViewMode] = useState<"desktop" | "tablet" | "mobile">("desktop");
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const errorCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const hasErrorsRef = useRef(false);
@@ -923,8 +926,30 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
     }
   };
 
+  const handleOpenInNewTab = () => {
+    if (previewUrl) {
+      window.open(previewUrl, '_blank');
+    }
+  };
+
+  const handleShare = async () => {
+    if (previewUrl) {
+      try {
+        await navigator.clipboard.writeText(previewUrl);
+        // You might want to add a toast notification here
+        console.log("URL copied to clipboard");
+      } catch (err) {
+        console.error("Failed to copy URL", err);
+      }
+    }
+  };
+
+  const toggleFullscreen = () => {
+    setIsFullscreen(!isFullscreen);
+  };
+
   return (
-    <div className="flex h-full flex-col bg-background">
+    <div className={cn("flex h-full flex-col bg-background transition-all duration-300", isFullscreen && "fixed inset-0 z-50")}>
       {/* Top Toolbar */}
       <div className="flex h-14 items-center justify-between border-b border-white/10 bg-background/95 backdrop-blur-sm px-4">
         <div className="flex items-center gap-2">
@@ -934,129 +959,171 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
           </div>
         </div>
 
+        <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 p-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn("h-7 w-7 rounded p-0", viewMode === "mobile" && "bg-primary/20 text-primary")}
+            onClick={() => setViewMode("mobile")}
+            title="Mobile view (375px)"
+          >
+            <Smartphone className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn("h-7 w-7 rounded p-0", viewMode === "tablet" && "bg-primary/20 text-primary")}
+            onClick={() => setViewMode("tablet")}
+            title="Tablet view (768px)"
+          >
+            <Tablet className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn("h-7 w-7 rounded p-0", viewMode === "desktop" && "bg-primary/20 text-primary")}
+            onClick={() => setViewMode("desktop")}
+            title="Desktop view (100%)"
+          >
+            <Monitor className="h-4 w-4" />
+          </Button>
+        </div>
+
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 rounded-lg text-xs"
+            className="h-8 w-8 rounded-lg p-0"
             onClick={handleRefresh}
             title="Refresh preview"
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="sm" className="h-8 rounded-lg text-xs">
-            <Maximize2 className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="sm" className="h-8 rounded-lg text-xs">
-            <Share2 className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="sm" className="h-8 rounded-lg text-xs">
-            <Github className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="sm" className="h-8 rounded-lg text-xs">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 rounded-lg p-0"
+            onClick={handleOpenInNewTab}
+            title="Open in new tab"
+            disabled={!previewUrl}
+          >
             <ArrowUpRight className="h-4 w-4" />
           </Button>
-          <Button size="sm" className="h-8 rounded-lg bg-primary px-4 text-xs font-medium text-primary-foreground">
-            Publish
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 rounded-lg p-0"
+            onClick={handleShare}
+            title="Copy URL"
+            disabled={!previewUrl}
+          >
+            <Share2 className="h-4 w-4" />
           </Button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" className="h-8 rounded-lg text-xs">
-            Login
-          </Button>
-          <Button variant="outline" size="sm" className="h-8 rounded-lg border-primary/30 bg-primary/10 text-xs text-primary">
-            Register
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 rounded-lg p-0"
+            onClick={toggleFullscreen}
+            title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          >
+            {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </Button>
         </div>
       </div>
 
       {/* Preview Frame */}
-      <div className="relative flex-1 overflow-hidden">
-        {isLoading ? (
-          <div className="flex h-full items-center justify-center bg-gradient-to-br from-primary/5 via-background to-background">
-            <div className="text-center space-y-3">
-              <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
-              <p className="text-sm text-muted-foreground">Starting preview...</p>
-            </div>
-          </div>
-        ) : previewUrl ? (
-          <iframe
-            ref={frameRef}
-            onLoad={() => {
-              if (frameRef.current) {
-                registerIframe(frameRef.current);
-              }
-            }}
-            src={previewUrl}
-            className="h-full w-full border-0"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-            title="Preview"
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-background">
-            <div className="text-center space-y-4 px-8">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
-                <Lock className="h-8 w-8 text-muted-foreground" />
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-lg font-semibold text-foreground">Preview will appear here</h3>
-                <p className="max-w-md text-sm text-muted-foreground">
-                  Start a chat session to generate code and see your app come to life. The preview will update automatically as changes are made.
-                </p>
+      <div className="relative flex-1 overflow-hidden bg-neutral-900/50 flex justify-center">
+        <div className={cn(
+          "relative h-full transition-all duration-300 ease-in-out bg-background shadow-2xl",
+          viewMode === "mobile" ? "w-[375px] border-x border-white/10" :
+            viewMode === "tablet" ? "w-[768px] border-x border-white/10" :
+              "w-full"
+        )}>
+          {isLoading ? (
+            <div className="flex h-full items-center justify-center bg-gradient-to-br from-primary/5 via-background to-background">
+              <div className="text-center space-y-3">
+                <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
+                <p className="text-sm text-muted-foreground">Starting preview...</p>
               </div>
             </div>
-          </div>
-        )}
-
-        {/* Error Popup */}
-        {showErrorPopup && errors.length > 0 && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm p-4">
-            <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-background/95 shadow-2xl">
-              <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10">
-                    <AlertCircle className="h-5 w-5 text-destructive" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-foreground">Build Errors Detected</h3>
-                    <p className="text-sm text-muted-foreground">Vite encountered errors while building</p>
-                  </div>
+          ) : previewUrl ? (
+            <iframe
+              ref={frameRef}
+              onLoad={() => {
+                if (frameRef.current) {
+                  registerIframe(frameRef.current);
+                }
+              }}
+              src={previewUrl}
+              className="h-full w-full border-0"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+              title="Preview"
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-background">
+              <div className="text-center space-y-4 px-8">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
+                  <Lock className="h-8 w-8 text-muted-foreground" />
                 </div>
-                <button
-                  onClick={() => setShowErrorPopup(false)}
-                  className="rounded-lg p-1.5 text-muted-foreground hover:bg-white/10 hover:text-foreground transition-colors"
-                >
-                  <X className="h-5 w-5" />
-                </button>
+                <div className="space-y-2">
+                  <h3 className="text-lg font-semibold text-foreground">Preview will appear here</h3>
+                  <p className="max-w-md text-sm text-muted-foreground">
+                    Start a chat session to generate code and see your app come to life. The preview will update automatically as changes are made.
+                  </p>
+                </div>
               </div>
+            </div>
+          )}
 
-              <div className="max-h-96 overflow-y-auto px-6 py-4">
-                <div className="space-y-3">
-                  {errors.map((error, index) => (
-                    <div
-                      key={index}
-                      className="rounded-lg border border-white/10 bg-white/5 p-4 font-mono text-sm text-foreground whitespace-pre-wrap"
-                    >
-                      {error}
+          {/* Error Popup */}
+          {showErrorPopup && errors.length > 0 && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm p-4">
+              <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-background/95 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10">
+                      <AlertCircle className="h-5 w-5 text-destructive" />
                     </div>
-                  ))}
+                    <div>
+                      <h3 className="text-lg font-semibold text-foreground">Build Errors Detected</h3>
+                      <p className="text-sm text-muted-foreground">Vite encountered errors while building</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowErrorPopup(false)}
+                    className="rounded-lg p-1.5 text-muted-foreground hover:bg-white/10 hover:text-foreground transition-colors"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <div className="max-h-96 overflow-y-auto px-6 py-4">
+                  <div className="space-y-3">
+                    {errors.map((error, index) => (
+                      <div
+                        key={index}
+                        className="rounded-lg border border-white/10 bg-white/5 p-4 font-mono text-sm text-foreground whitespace-pre-wrap"
+                      >
+                        {error}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="border-t border-white/10 px-6 py-4">
+                  <Button
+                    onClick={handleRequestFix}
+                    className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
+                    size="md"
+                  >
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Ask AI to Fix
+                  </Button>
                 </div>
               </div>
-
-              <div className="border-t border-white/10 px-6 py-4">
-                <Button
-                  onClick={handleRequestFix}
-                  className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-                  size="md"
-                >
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  Ask AI to Fix
-                </Button>
-              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Bottom Status Bar */}

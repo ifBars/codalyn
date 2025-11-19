@@ -5,7 +5,7 @@
  */
 
 import { getUser } from "@/lib/auth";
-import { createAgent, AgentEvent, ConversationMemory } from "@/lib/ai";
+import { createAgent, AgentEvent, ConversationMemory, getDefaultSystemPrompt } from "@/lib/ai";
 import { SandboxManager } from "@codalyn/sandbox";
 import { db } from "@/lib/db";
 import { aiSessions, toolLogs } from "@/lib/db/schema";
@@ -41,6 +41,11 @@ export async function chatWithAI(
   message: string,
   projectId: string
 ): Promise<{ response: string; toolCalls: Array<{ name: string; args: any; result: any }> }> {
+  console.log("[AI Debug] chatWithAI() - Starting");
+  console.log(`[AI Debug] Session ID: ${sessionId}`);
+  console.log(`[AI Debug] Project ID: ${projectId}`);
+  console.log(`[AI Debug] Message: ${message.substring(0, 100)}${message.length > 100 ? "..." : ""}`);
+
   const user = await getUser();
   if (!user) throw new Error("Unauthorized");
 
@@ -50,9 +55,12 @@ export async function chatWithAI(
 
   // Get or create sandbox for project
   // Use mock sandbox for server-side execution (WebContainers only work in browser)
+  console.log("[AI Debug] Creating sandbox...");
   const sandbox = await sandboxManager.createSandbox("mock");
+  console.log("[AI Debug] Sandbox created");
 
   // Get conversation history
+  console.log("[AI Debug] Fetching session from database...");
   const session = await db.query.aiSessions.findFirst({
     where: eq(aiSessions.id, sessionId),
   });
@@ -61,36 +69,14 @@ export async function chatWithAI(
     throw new Error("Session not found");
   }
 
-  // Get system prompt
-  const systemPrompt = `You are an AI engineer helping to build web applications.
-You have access to tools that let you read/write files, run commands, manage git, and interact with the database.
-
-## CRITICAL: MANDATORY TOOL USAGE
-**YOU MUST ALWAYS USE TOOLS - NEVER PROVIDE EMPTY RESPONSES**
-
-- **ALWAYS** call at least one tool function in every response when the user requests any action
-- **NEVER** respond with only text when you should be performing operations
-- **NEVER** output code directly in your text response - code MUST be written via tools
-- **EMPTY RESPONSES ARE FORBIDDEN** - Every response must include tool calls or a clear explanation of why tools aren't needed
-
-When the user asks you to do something:
-1. First, understand what they want
-2. Break it down into steps
-3. Use the available tools to accomplish each step
-4. Explain what you're doing as you go
-5. **ALWAYS end with a Tool Sequence Summary** listing all tools called and their purpose
-
-Remember:
-- Always read files before modifying them
-- Use git commands to track changes
-- Run commands to test/build when needed
-- Be careful with destructive operations
-- **NEVER output code unless you're using a tool**
-- **ALWAYS provide a Tool Sequence Summary at the end**`;
+  // Use the standard system prompt from the AI module
+  const systemPrompt = getDefaultSystemPrompt();
+  console.log(`[AI Debug] System prompt length: ${systemPrompt.length} chars`);
 
   // Create memory and restore previous conversation
   const memory = new ConversationMemory(systemPrompt);
   const previousHistory = (session.context as any)?.conversationHistory || [];
+  console.log(`[AI Debug] Restoring ${previousHistory.length} previous messages`);
 
   // Restore previous messages
   for (const msg of previousHistory) {
@@ -98,6 +84,7 @@ Remember:
   }
 
   // Create agent
+  console.log("[AI Debug] Creating agent...");
   const agent = createAgent({
     apiKey: process.env.GEMINI_API_KEY,
     modelName: "gemini-2.0-flash-exp",
@@ -105,6 +92,7 @@ Remember:
     systemPrompt,
     maxIterations: 10,
   });
+  console.log("[AI Debug] Agent created");
 
   // Manually restore memory to agent (since we created it with systemPrompt)
   for (const msg of previousHistory) {
@@ -112,9 +100,14 @@ Remember:
   }
 
   // Run agent
+  console.log("[AI Debug] Running agent...");
+  const startTime = Date.now();
   const result = await agent.run(message);
+  const duration = Date.now() - startTime;
+  console.log(`[AI Debug] Agent completed (${duration}ms)`);
 
   // Log tool executions
+  console.log(`[AI Debug] Logging ${result.toolResults.length} tool results to database...`);
   for (const toolResult of result.toolResults) {
     await db.insert(toolLogs).values({
       sessionId,
@@ -127,6 +120,7 @@ Remember:
   }
 
   // Update session context
+  console.log("[AI Debug] Updating session context in database...");
   await db
     .update(aiSessions)
     .set({
@@ -136,6 +130,10 @@ Remember:
       updatedAt: new Date(),
     })
     .where(eq(aiSessions.id, sessionId));
+
+  console.log(`[AI Debug] chatWithAI() - Completed`);
+  console.log(`[AI Debug] Final response length: ${result.finalResponse.length} chars`);
+  console.log(`[AI Debug] Tool calls: ${result.toolCalls.length}`);
 
   return {
     response: result.finalResponse,
@@ -152,6 +150,11 @@ export async function* streamChatWithAI(
   message: string,
   projectId: string
 ): AsyncGenerator<{ type: "text" | "tool_call"; data: any }> {
+  console.log("[AI Debug] streamChatWithAI() - Starting");
+  console.log(`[AI Debug] Session ID: ${sessionId}`);
+  console.log(`[AI Debug] Project ID: ${projectId}`);
+  console.log(`[AI Debug] Message: ${message.substring(0, 100)}${message.length > 100 ? "..." : ""}`);
+
   const user = await getUser();
   if (!user) throw new Error("Unauthorized");
 
@@ -160,8 +163,11 @@ export async function* streamChatWithAI(
   }
 
   // Use mock sandbox for server-side execution (WebContainers only work in browser)
+  console.log("[AI Debug] Creating sandbox...");
   const sandbox = await sandboxManager.createSandbox("mock");
+  console.log("[AI Debug] Sandbox created");
 
+  console.log("[AI Debug] Fetching session from database...");
   const session = await db.query.aiSessions.findFirst({
     where: eq(aiSessions.id, sessionId),
   });
@@ -170,30 +176,12 @@ export async function* streamChatWithAI(
     throw new Error("Session not found");
   }
 
-  // Get system prompt
-  const systemPrompt = `You are an AI engineer helping to build web applications.
-You have access to tools that let you read/write files, run commands, manage git, and interact with the database.
-
-## CRITICAL: MANDATORY TOOL USAGE
-**YOU MUST ALWAYS USE TOOLS - NEVER PROVIDE EMPTY RESPONSES**
-
-- **ALWAYS** call at least one tool function in every response when the user requests any action
-- **NEVER** respond with only text when you should be performing operations
-- **NEVER** output code directly in your text response - code MUST be written via tools
-
-When the user asks you to do something:
-1. First, understand what they want
-2. Break it down into steps
-3. Use the available tools to accomplish each step
-4. Explain what you're doing as you go
-
-Remember:
-- Always read files before modifying them
-- Use git commands to track changes
-- Run commands to test/build when needed
-- Be careful with destructive operations`;
+  // Use the standard system prompt from the AI module
+  const systemPrompt = getDefaultSystemPrompt();
+  console.log(`[AI Debug] System prompt length: ${systemPrompt.length} chars`);
 
   // Create agent
+  console.log("[AI Debug] Creating agent...");
   const agent = createAgent({
     apiKey: process.env.GEMINI_API_KEY,
     modelName: "gemini-2.0-flash-exp",
@@ -201,17 +189,23 @@ Remember:
     systemPrompt,
     maxIterations: 10,
   });
+  console.log("[AI Debug] Agent created");
 
   // Restore previous messages
   const previousHistory = (session.context as any)?.conversationHistory || [];
+  console.log(`[AI Debug] Restoring ${previousHistory.length} previous messages`);
   for (const msg of previousHistory) {
     agent.getHistory(); // Just accessing to restore state
   }
 
   // Stream agent execution
+  console.log("[AI Debug] Starting agent stream...");
+  const streamStartTime = Date.now();
   const stream = agent.runStream(message);
+  let eventCount = 0;
 
   for await (const event of stream) {
+    eventCount++;
     if (event.type === "thought") {
       yield { type: "text", data: event.content };
     } else if (event.type === "tool_call") {
@@ -232,11 +226,18 @@ Remember:
         },
       };
     } else if (event.type === "response") {
+      console.log(`[AI Debug] Stream event ${eventCount}: response (${event.content?.length || 0} chars)`);
       yield { type: "text", data: event.content };
+    } else {
+      console.log(`[AI Debug] Stream event ${eventCount}: ${event.type}`);
     }
   }
 
+  const streamDuration = Date.now() - streamStartTime;
+  console.log(`[AI Debug] Stream completed (${streamDuration}ms, ${eventCount} events)`);
+
   // Update session context with final history
+  console.log("[AI Debug] Updating session context in database...");
   await db
     .update(aiSessions)
     .set({
@@ -246,6 +247,8 @@ Remember:
       updatedAt: new Date(),
     })
     .where(eq(aiSessions.id, sessionId));
+
+  console.log(`[AI Debug] streamChatWithAI() - Completed`);
 }
 
 

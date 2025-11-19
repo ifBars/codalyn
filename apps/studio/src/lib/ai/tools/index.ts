@@ -14,17 +14,24 @@ export class CodalynToolSet implements ToolSet {
     }
 
     getDefinitions(): ToolDefinition[] {
-        return toolRegistry.map((tool) => ({
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.parameters,
-        }));
+        // Filter out search_project since VectorStoreToolSet provides a better implementation
+        return toolRegistry
+            .filter((tool) => tool.name !== "search_project")
+            .map((tool) => ({
+                name: tool.name,
+                description: tool.description,
+                parameters: tool.parameters,
+            }));
     }
 
     async execute(toolCall: ToolCall, context?: any): Promise<ToolResult> {
+        console.log(`[AI Debug] CodalynToolSet.execute() - Tool: ${toolCall.name}`);
+        console.log(`[AI Debug] Tool args:`, toolCall.args);
+
         const executor = getExecutor(toolCall.name);
 
         if (!executor) {
+            console.error(`[AI Debug] Tool executor not found: ${toolCall.name}`);
             return {
                 toolCallId: toolCall.id,
                 name: toolCall.name,
@@ -35,7 +42,30 @@ export class CodalynToolSet implements ToolSet {
         }
 
         try {
+            console.log(`[AI Debug] Executing tool ${toolCall.name}...`);
+            const execStartTime = Date.now();
             const result = await executor.execute(toolCall.args, this.sandbox);
+            const execDuration = Date.now() - execStartTime;
+            // Safely create output preview
+            let outputPreview = "N/A";
+            try {
+                if (result.output === undefined || result.output === null) {
+                    outputPreview = String(result.output);
+                } else if (typeof result.output === 'string') {
+                    outputPreview = result.output.substring(0, 100) + (result.output.length > 100 ? "..." : "");
+                } else {
+                    const stringified = JSON.stringify(result.output);
+                    outputPreview = stringified ? stringified.substring(0, 100) + (stringified.length > 100 ? "..." : "") : "Unable to stringify";
+                }
+            } catch (e) {
+                outputPreview = `[Error stringifying output: ${e instanceof Error ? e.message : String(e)}]`;
+            }
+
+            console.log(`[AI Debug] Tool ${toolCall.name} executor completed (${execDuration}ms)`, {
+                success: result.success,
+                error: result.error,
+                outputPreview
+            });
 
             return {
                 toolCallId: toolCall.id,
@@ -45,6 +75,7 @@ export class CodalynToolSet implements ToolSet {
                 success: result.success,
             };
         } catch (error) {
+            console.error(`[AI Debug] Tool ${toolCall.name} threw exception:`, error);
             return {
                 toolCallId: toolCall.id,
                 name: toolCall.name,
@@ -56,6 +87,10 @@ export class CodalynToolSet implements ToolSet {
     }
 
     hasTool(name: string): boolean {
+        // Exclude search_project - it's handled by VectorStoreToolSet
+        if (name === "search_project") {
+            return false;
+        }
         return getExecutor(name) !== undefined;
     }
 
