@@ -39,8 +39,8 @@ export default async function DashboardLayout({
     <div className="relative flex min-h-screen bg-background/60">
       <aside className="glass-panel relative hidden w-[300px] flex-col border-r border-white/10 bg-white/5/60 px-6 py-8 lg:flex">
         <Link href="/projects" className="group flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-gradient-to-br from-primary/50 via-primary/20 to-accent/30 text-sm font-semibold text-primary-foreground shadow-glow">
-            C
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-gradient-to-br from-primary/50 via-primary/20 to-accent/30 shadow-glow overflow-hidden">
+            <img src="/logo.png" alt="Codalyn" className="h-full w-full object-contain p-1.5" />
           </div>
           <div>
             <div className="flex items-center gap-2">

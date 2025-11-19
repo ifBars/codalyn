@@ -59,10 +59,3 @@ export interface SandboxInterface {
   getInfo(): Promise<{ type: "webcontainer" | "docker"; ready: boolean }>;
 }
 
-export interface SandboxManager {
-  createSandbox(type: "webcontainer" | "docker", options?: SandboxOptions): Promise<SandboxInterface>;
-  getSandbox(id: string): Promise<SandboxInterface | null>;
-  destroySandbox(id: string): Promise<void>;
-  listSandboxes(): Promise<string[]>;
-}
-

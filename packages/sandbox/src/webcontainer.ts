@@ -11,10 +11,9 @@ export class WebContainerSandbox implements SandboxInterface {
   async init(options?: SandboxOptions): Promise<void> {
     const { WebContainer } = await import("@webcontainer/api");
     this.webcontainer = await WebContainer.boot();
-    
-    if (options?.files) {
-      await this.webcontainer.mount(options.files);
-    }
+
+    // Note: options.files would need to be converted to FileSystemTree format
+    // For now, this is a placeholder - actual file mounting would require proper conversion
   }
 
   async readFile(path: string): Promise<string> {
@@ -25,7 +24,42 @@ export class WebContainerSandbox implements SandboxInterface {
 
   async writeFile(path: string, content: string): Promise<void> {
     if (!this.webcontainer) throw new Error("Sandbox not initialized");
-    await this.webcontainer.fs.writeFile(path, content);
+    
+    // Normalize path - ensure consistent forward slashes
+    // Remove leading slash if present (WebContainer uses relative paths from root)
+    const normalizedPath = path.replace(/^\/+/, '').replace(/\/+/g, '/');
+    
+    // Extract directory path and create it if needed
+    const dirPath = normalizedPath.split('/').slice(0, -1).join('/');
+    if (dirPath) {
+      // Create parent directories recursively
+      try {
+        await this.webcontainer.fs.mkdir(dirPath, { recursive: true });
+      } catch (e: any) {
+        // If recursive fails, try creating directories one by one as fallback
+        const parts = dirPath.split('/').filter(Boolean);
+        let currentPath = '';
+        for (const part of parts) {
+          currentPath = currentPath ? `${currentPath}/${part}` : part;
+          try {
+            await this.webcontainer.fs.mkdir(currentPath);
+          } catch (dirError: any) {
+            // Only ignore "directory already exists" errors
+            const isExistsError = 
+              dirError?.code === 'EEXIST' || 
+              dirError?.message?.includes('already exists') ||
+              dirError?.message?.includes('EEXIST');
+            
+            if (!isExistsError) {
+              throw dirError;
+            }
+          }
+        }
+      }
+    }
+    
+    // Write the file
+    await this.webcontainer.fs.writeFile(normalizedPath, content);
   }
 
   async readdir(path: string): Promise<string[]> {
@@ -41,7 +75,11 @@ export class WebContainerSandbox implements SandboxInterface {
 
   async mkdir(path: string, options?: { recursive?: boolean }): Promise<void> {
     if (!this.webcontainer) throw new Error("Sandbox not initialized");
-    await this.webcontainer.fs.mkdir(path, { recursive: options?.recursive ?? false });
+    if (options?.recursive) {
+      await this.webcontainer.fs.mkdir(path, { recursive: true });
+    } else {
+      await this.webcontainer.fs.mkdir(path);
+    }
   }
 
   async glob(pattern: string): Promise<string[]> {
@@ -87,8 +125,11 @@ export class WebContainerSandbox implements SandboxInterface {
       env: options?.env,
     });
 
+    // Generate a unique ID since WebContainer processes don't expose pid
+    const processId = crypto.randomUUID();
+
     return {
-      id: process.pid.toString(),
+      id: processId,
       kill: async () => {
         await process.kill();
       },

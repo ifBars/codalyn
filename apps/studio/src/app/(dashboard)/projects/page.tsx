@@ -15,12 +15,12 @@ type StatusKey = "draft" | "generating" | "ready" | "error" | string;
 
 const statusMeta: Record<
   StatusKey,
-  { label: string; badge: "default" | "accent" | "success" | "warning" | "outline" | "destructive" }
+  { label: string; badge: "default" | "accent" | "success" | "warning" | "outline" | "info" }
 > = {
   draft: { label: "Draft", badge: "outline" },
   generating: { label: "Generating", badge: "accent" },
   ready: { label: "Ready", badge: "success" },
-  error: { label: "Needs attention", badge: "destructive" },
+  error: { label: "Needs attention", badge: "warning" },
 };
 
 function formatDate(input?: Date | null) {

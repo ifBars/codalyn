@@ -3,48 +3,48 @@
 @tailwind utilities;
 
 :root {
-  --background: 225 27% 6%;
-  --foreground: 210 40% 96%;
+  --background: 0 0% 0%;
+  --foreground: 0 0% 98%;
 
-  --card: 222 26% 10%;
-  --card-foreground: 210 40% 96%;
+  --card: 0 0% 8%;
+  --card-foreground: 0 0% 98%;
 
-  --popover: 222 26% 12%;
-  --popover-foreground: 210 40% 96%;
+  --popover: 0 0% 10%;
+  --popover-foreground: 0 0% 98%;
 
-  --primary: 248 100% 72%;
-  --primary-foreground: 223 40% 10%;
+  --primary: 217 91% 60%;
+  --primary-foreground: 0 0% 100%;
 
-  --secondary: 220 18% 20%;
-  --secondary-foreground: 210 40% 96%;
+  --secondary: 0 0% 12%;
+  --secondary-foreground: 0 0% 98%;
 
-  --muted: 220 18% 18%;
-  --muted-foreground: 215 16% 72%;
+  --muted: 0 0% 10%;
+  --muted-foreground: 0 0% 65%;
 
-  --accent: 262 82% 72%;
-  --accent-foreground: 223 47% 10%;
+  --accent: 217 91% 60%;
+  --accent-foreground: 0 0% 100%;
 
   --destructive: 0 84% 60%;
-  --destructive-foreground: 210 40% 96%;
+  --destructive-foreground: 0 0% 98%;
 
-  --success: 154 84% 56%;
-  --success-foreground: 221 39% 10%;
+  --success: 142 71% 45%;
+  --success-foreground: 0 0% 100%;
 
-  --warning: 42 100% 62%;
-  --warning-foreground: 221 39% 10%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 0 0% 100%;
 
-  --info: 202 85% 56%;
-  --info-foreground: 210 40% 96%;
+  --info: 199 89% 48%;
+  --info-foreground: 0 0% 100%;
 
-  --border: 220 18% 20%;
-  --input: 220 18% 22%;
-  --ring: 248 100% 72%;
+  --border: 0 0% 15%;
+  --input: 0 0% 12%;
+  --ring: 217 91% 60%;
 
-  --grid-color: 148, 163, 184;
-  --spotlight-color: 129, 140, 248;
-  --primary-rgb: 129, 140, 248;
+  --grid-color: 255, 255, 255;
+  --spotlight-color: 59, 130, 246;
+  --primary-rgb: 59, 130, 246;
 
-  --radius: 18px;
+  --radius: 12px;
 }
 
 @media (max-width: 768px) {
@@ -64,18 +64,11 @@
 
   body {
     @apply min-h-screen bg-background text-foreground antialiased;
-    @apply selection:bg-primary/20 selection:text-primary-foreground;
-    background-image: radial-gradient(
-        circle at 20% 20%,
-        rgba(var(--primary-rgb), 0.12),
-        transparent 45%
-      ),
-      radial-gradient(
-        circle at 80% 0%,
-        rgba(56, 189, 248, 0.12),
-        transparent 50%
-      ),
-      linear-gradient(180deg, rgba(2, 6, 23, 0.6), transparent 45%, rgba(2, 6, 23, 0.95));
+    @apply selection:bg-primary/30 selection:text-primary-foreground;
+    background-image: 
+      linear-gradient(to right, rgba(var(--grid-color), 0.03) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(var(--grid-color), 0.03) 1px, transparent 1px);
+    background-size: 24px 24px;
     background-attachment: fixed;
   }
 
@@ -89,16 +82,20 @@
 
 @layer utilities {
   .glass-panel {
-    @apply bg-white/[0.02] backdrop-blur-xl border border-white/10 shadow-surface-lg;
+    @apply bg-white/[0.03] backdrop-blur-xl border border-white/5 shadow-surface-lg;
   }
 
   .surface {
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04),
-      0 24px 60px -32px rgba(15, 23, 42, 0.65);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05),
+      0 8px 32px -8px rgba(0, 0, 0, 0.8),
+      0 0 0 1px rgba(255, 255, 255, 0.05);
   }
 
   .bg-grid-sm {
-    background-size: 32px 32px;
+    background-image: 
+      linear-gradient(to right, rgba(var(--grid-color), 0.04) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(var(--grid-color), 0.04) 1px, transparent 1px);
+    background-size: 24px 24px;
   }
 
   .bg-grid-sm::before {
@@ -123,5 +120,138 @@
     z-index: -1;
     opacity: 0.7;
   }
+}
+
+/* Animated Background Gradients */
+@keyframes float {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(50px, -50px) scale(1.15);
+  }
+  66% {
+    transform: translate(-40px, 40px) scale(0.85);
+  }
+}
+
+@keyframes float-reverse {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(-50px, 50px) scale(0.85);
+  }
+  66% {
+    transform: translate(40px, -40px) scale(1.15);
+  }
+}
+
+@keyframes swirl {
+  0% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+  }
+  25% {
+    transform: translate(80px, -80px) rotate(90deg) scale(1.2);
+  }
+  50% {
+    transform: translate(-60px, 60px) rotate(180deg) scale(0.9);
+  }
+  75% {
+    transform: translate(70px, 70px) rotate(270deg) scale(1.1);
+  }
+  100% {
+    transform: translate(0, 0) rotate(360deg) scale(1);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 0.4;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+}
+
+@keyframes draw-arc {
+  0% {
+    stroke-dashoffset: 314;
+  }
+  50% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: -314;
+  }
+}
+
+.animated-gradient-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.animated-gradient-orb-1 {
+  width: 800px;
+  height: 800px;
+  top: 10%;
+  left: 10%;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.4) 0%, rgba(139, 92, 246, 0.1) 50%, transparent 70%);
+  animation: float 20s ease-in-out infinite;
+}
+
+.animated-gradient-orb-2 {
+  width: 600px;
+  height: 600px;
+  top: 60%;
+  right: 15%;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.35) 0%, rgba(99, 102, 241, 0.1) 50%, transparent 70%);
+  animation: float-reverse 25s ease-in-out infinite;
+  animation-delay: -5s;
+}
+
+.animated-gradient-orb-3 {
+  width: 700px;
+  height: 700px;
+  top: 30%;
+  right: 20%;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.3) 0%, rgba(168, 85, 247, 0.08) 50%, transparent 70%);
+  animation: swirl 30s ease-in-out infinite;
+  animation-delay: -10s;
+}
+
+.animated-gradient-orb-4 {
+  width: 500px;
+  height: 500px;
+  bottom: 20%;
+  left: 20%;
+  background: radial-gradient(circle, rgba(236, 72, 153, 0.25) 0%, rgba(236, 72, 153, 0.06) 50%, transparent 70%);
+  animation: float 18s ease-in-out infinite;
+  animation-delay: -15s;
+}
+
+.animated-gradient-orb-5 {
+  width: 900px;
+  height: 900px;
+  top: 50%;
+  left: 50%;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.2) 0%, rgba(59, 130, 246, 0.05) 50%, transparent 70%);
+  animation: pulse-glow 15s ease-in-out infinite;
+  animation-delay: -7s;
+}
+
+.animated-gradient-orb-6 {
+  width: 550px;
+  height: 550px;
+  bottom: 10%;
+  right: 30%;
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.3) 0%, rgba(124, 58, 237, 0.08) 50%, transparent 70%);
+  animation: float-reverse 22s ease-in-out infinite;
+  animation-delay: -12s;
 }
 

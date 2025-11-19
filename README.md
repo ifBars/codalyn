@@ -1,72 +1,139 @@
-# Codalyn - AI-Powered Web App Builder
+# Codalyn - AI Frontend Builder
 
-An in-browser AI engineer that builds full-stack web applications from natural language specifications.
+Build beautiful React apps with AI. Just describe what you want, and watch it come to life in real-time.
 
-## Architecture
+## ✨ Features
 
-Monorepo structure with npm workspaces:
-- `apps/studio` - Next.js 15 App Router Studio (chat + editor + preview)
-- `packages/sandbox` - Sandbox execution engine (WebContainers + Docker)
-- `packages/tools` - AI tool schemas and executors
-- `packages/runtime` - Runtime utilities for generated apps
-- `packages/shared` - Shared types and utilities
+- 🤖 **AI-Powered Development** - Gemini 2.5 Flash Lite with vision support
+- 💬 **Natural Language Interface** - Chat with AI to describe what you want
+- 👁️ **Visual Feedback** - AI can see screenshots of your app and iterate
+- 🎨 **Live Preview** - Instant updates in WebContainer-powered preview
+- ⚡ **Modern Stack** - Vite + React + TypeScript + Tailwind CSS
+- 🎯 **Frontend-Focused** - Build beautiful UIs without backend complexity
 
-## Tech Stack
+## 🎯 How It Works
 
-- **Framework**: Next.js 15 (App Router)
-- **Language**: TypeScript
-- **Auth**: Supabase Auth
-- **Database**: Supabase Postgres with Drizzle ORM
-- **AI**: Google Gemini (function calling)
-- **Sandbox**: WebContainers (in-browser) + Docker (heavy tasks)
-- **UI**: Tailwind CSS + shadcn/ui + Zustand
-- **Code Editor**: Monaco Editor
-- **Git**: GitHub integration
+1. **Chat** - Describe what you want to build in plain English
+2. **AI Generates** - Gemini creates React components with Tailwind CSS
+3. **Live Preview** - See your app running instantly in WebContainer
+4. **Visual Feedback** - Send screenshots to AI for iterative improvements
+5. **Export** - Download your project when ready
 
-## Setup
+## 🏗️ Architecture
 
-1. Install Bun (if not already installed):
+**Simple & Fast:**
+- **Next.js 15** - Modern React framework with App Router
+- **WebContainers** - Run Vite + React in your browser (no server needed!)
+- **Gemini 2.5 Flash Lite** - Fast AI with vision support
+- **Tailwind CSS** - Utility-first styling
+
+**Generated Projects:**
+- **Vite** - Lightning-fast dev server
+- **React 18** - Modern React with hooks
+- **TypeScript** - Type safety
+- **Tailwind CSS 3** - Beautiful, responsive designs
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- **Bun** >= 1.0.0 ([Install](https://bun.sh))
+- **Google Gemini API Key** ([Get one free](https://makersuite.google.com/app/apikey))
+
+### Setup in 2 Minutes
+
+1. **Clone and Install**:
    ```bash
-   curl -fsSL https://bun.sh/install | bash
-   ```
-
-2. Clone the repository
-3. Install dependencies:
-   ```bash
+   git clone <your-repo-url>
+   cd codalyn
    bun install
    ```
 
-4. Set up environment variables:
-   - Copy `.env.example` to `.env.local`
-   - Fill in Supabase credentials
-   - Add Gemini API key
-   - Add GitHub OAuth credentials
-
-5. Set up Supabase:
-   - Create a new Supabase project
-   - Copy the connection string to `DATABASE_URL`
-   - Run migrations:
-     ```bash
-     cd apps/studio
-     bun run db:generate
-     bun run db:migrate
-     ```
-
-6. Start development server:
+2. **Start Development**:
    ```bash
    bun run dev
    ```
 
-## Development
+3. **Open Browser**:
+   - Visit [http://localhost:3000](http://localhost:3000)
+   - Enter your Gemini API key
+   - Start building! 🎉
 
-- `bun run dev` - Start dev server
-- `bun run build` - Build all packages
-- `bun run lint` - Lint all packages
-- `bun run type-check` - Type check all packages
+That's it! No database, no auth, no configuration files. Just pure AI-powered frontend development.
 
-## Project Structure
+## 💡 Usage Examples
 
-- AI uses function/tool calling to directly interact with workspace
-- Tools include: read_file, write_file, run_command, git operations, npm operations, database operations
-- Sandbox provides isolated execution environment
-- All changes tracked in GitHub repositories
+**"Create a landing page for a SaaS product"**
+→ AI generates a modern landing page with hero section, features, pricing, and CTA
+
+**"Add a contact form with validation"**
+→ AI adds a form component with email validation and error handling
+
+**"Make it more colorful and fun"** (with screenshot)
+→ AI sees your current design and suggests improvements
+
+**"Convert this to a dark mode"**
+→ AI updates the entire theme to dark mode with proper contrast
+
+## 🔥 Key Features
+
+### Visual Feedback Loop
+- Click the camera button to send a screenshot of your current UI
+- AI can see what you built and make precise improvements
+- Iterate visually until it's perfect
+
+### Real-Time Preview
+- Powered by WebContainers - full Node.js environment in your browser
+- Vite dev server with hot module replacement
+- See changes instantly as AI writes code
+
+### Smart Code Generation
+- Modern React patterns (hooks, functional components)
+- Responsive Tailwind CSS classes
+- TypeScript for type safety
+- Clean, readable code with helpful comments
+
+## 🛠️ Tech Stack
+
+**Builder App:**
+- Next.js 15 (App Router)
+- TypeScript
+- Tailwind CSS
+- WebContainer API
+- Gemini 2.5 Flash Lite
+
+**Generated Apps:**
+- Vite 5
+- React 18
+- TypeScript 5
+- Tailwind CSS 3
+
+## 📝 Development
+
+```bash
+bun run dev          # Start dev server
+bun run build        # Build for production
+bun run lint         # Lint code
+bun run type-check   # Type check
+```
+
+## 🌟 Why Codalyn?
+
+Unlike full-stack builders that require complex setup:
+- ✅ **No database setup** - Frontend-only focus
+- ✅ **No authentication** - Just start building
+- ✅ **No deployment config** - Run entirely in browser
+- ✅ **Visual feedback** - AI can see and improve your designs
+- ✅ **Modern stack** - Industry-standard tools (Vite, React, Tailwind)
+
+## 📸 Screenshots Coming Soon
+
+We're building in public! Check back for screenshots and demos.
+
+## 🤝 Contributing
+
+Contributions welcome! This is an open-source project focused on making AI-powered frontend development accessible to everyone.
+
+## 📄 License
+
+MIT License - feel free to use this in your own projects!
