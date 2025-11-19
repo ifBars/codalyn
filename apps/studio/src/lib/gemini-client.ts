@@ -16,32 +16,32 @@ export const GEMINI_MODEL_OPTIONS: Array<{
   label: string;
   description: string;
 }> = [
-  {
-    id: "gemini-2.5-flash",
-    label: "Gemini 2.5 Flash",
-    description: "Fast, capable generalist for most UI builds.",
-  },
-  {
-    id: "gemini-2.5-flash-lite",
-    label: "Gemini 2.5 Flash Lite",
-    description: "Default balance of speed + quality.",
-  },
-  {
-    id: "gemini-2.5-flash-lite-latest",
-    label: "Gemini 2.5 Flash Lite (latest)",
-    description: "Cutting edge lite model with latest weights.",
-  },
-  {
-    id: "gemini-flash-lite-latest",
-    label: "Gemini Flash Lite (latest)",
-    description: "Lightweight model ideal for rapid prototyping.",
-  },
-  {
-    id: "gemini-2.5-pro",
-    label: "Gemini 2.5 Pro",
-    description: "Highest quality responses, slower latency.",
-  },
-];
+    {
+      id: "gemini-2.5-flash",
+      label: "Gemini 2.5 Flash",
+      description: "Fast, capable generalist for most UI builds.",
+    },
+    {
+      id: "gemini-2.5-flash-lite",
+      label: "Gemini 2.5 Flash Lite",
+      description: "Default balance of speed + quality.",
+    },
+    {
+      id: "gemini-2.5-flash-lite-latest",
+      label: "Gemini 2.5 Flash Lite (latest)",
+      description: "Cutting edge lite model with latest weights.",
+    },
+    {
+      id: "gemini-flash-lite-latest",
+      label: "Gemini Flash Lite (latest)",
+      description: "Lightweight model ideal for rapid prototyping.",
+    },
+    {
+      id: "gemini-2.5-pro",
+      label: "Gemini 2.5 Pro",
+      description: "Highest quality responses, slower latency.",
+    },
+  ];
 
 export const DEFAULT_GEMINI_MODEL: GeminiModelId = "gemini-2.5-flash-lite";
 
@@ -70,12 +70,12 @@ export interface AIMessage {
  */
 function filterResponseText(text: string): string {
   if (!text) return text;
-  
+
   let filtered = text;
-  
+
   // Remove "File content:" headers followed by code blocks
   filtered = filtered.replace(/File content:\s*\n\s*```[\s\S]*?```/gi, '');
-  
+
   // Remove large code blocks that look like complete files (not snippets)
   // Pattern: code blocks with imports/exports and many lines
   filtered = filtered.replace(/```[\w]*\n([\s\S]*?)```/g, (match, content) => {
@@ -83,31 +83,31 @@ function filterResponseText(text: string): string {
     const hasImports = /import\s+.*from/.test(content);
     const hasExports = /export\s+(default\s+)?(const|function|class|interface|type)/.test(content);
     const isLargeFile = lineCount > 30 && content.length > 500;
-    
+
     // Remove if it looks like a complete file dump
     if (isLargeFile && (hasImports || hasExports)) {
       return '';
     }
-    
+
     return match;
   });
-  
+
   // Remove "File content:" lines followed by large code blocks (without markdown)
   filtered = filtered.replace(/File content:\s*\n([\s\S]{300,}?)(?=\n\n|\n[A-Z]|$)/g, '');
-  
+
   // Remove standalone code lines (like "export default App;")
   // Pattern: lines that look like code statements without context
   filtered = filtered.replace(/^(export\s+(default\s+)?[\w]+\s*;?\s*)$/gm, '');
   filtered = filtered.replace(/^(import\s+.*from\s+['"].*['"]\s*;?\s*)$/gm, '');
   filtered = filtered.replace(/^(const\s+\w+\s*=.*;?\s*)$/gm, '');
   filtered = filtered.replace(/^(function\s+\w+.*\{?\s*)$/gm, '');
-  
+
   // Clean up multiple consecutive newlines
   filtered = filtered.replace(/\n{3,}/g, '\n\n');
-  
+
   // Remove leading/trailing whitespace
   filtered = filtered.trim();
-  
+
   return filtered;
 }
 
@@ -117,7 +117,7 @@ function filterResponseText(text: string): string {
  */
 function containsCodeWithoutTools(text: string, hasToolCalls: boolean): boolean {
   if (!text || hasToolCalls) return false;
-  
+
   // Check for code patterns
   const codePatterns = [
     /^export\s+(default\s+)?[\w]+\s*;?\s*$/m,  // "export default App;"
@@ -127,7 +127,7 @@ function containsCodeWithoutTools(text: string, hasToolCalls: boolean): boolean 
     /^class\s+\w+.*\{?\s*$/m,  // class declarations
     /```[\w]*\n[\s\S]*?```/,  // code blocks
   ];
-  
+
   return codePatterns.some(pattern => pattern.test(text.trim()));
 }
 
@@ -352,12 +352,12 @@ export class GeminiClient {
 
     // Extract and validate operations from function calls
     const invalidOperations: string[] = [];
-    
+
     for (const funcCall of functionCalls) {
       if (funcCall.name === "write_file") {
         const path = funcCall.args?.path;
         const content = funcCall.args?.content;
-        
+
         if (!path || typeof path !== 'string') {
           invalidOperations.push(`write_file: missing or invalid path`);
           continue;
@@ -366,7 +366,7 @@ export class GeminiClient {
           invalidOperations.push(`write_file "${path}": missing content`);
           continue;
         }
-        
+
         operations.push({
           type: "write",
           path: path,
@@ -374,31 +374,31 @@ export class GeminiClient {
         });
       } else if (funcCall.name === "delete_file") {
         const path = funcCall.args?.path;
-        
+
         if (!path || typeof path !== 'string') {
           invalidOperations.push(`delete_file: missing or invalid path`);
           continue;
         }
-        
+
         operations.push({
           type: "delete",
           path: path,
         });
       } else if (funcCall.name === "install_package") {
         const packages = funcCall.args?.packages;
-        
+
         if (!Array.isArray(packages) || packages.length === 0) {
           invalidOperations.push(`install_package: missing or invalid packages array`);
           continue;
         }
-        
+
         // Validate all packages are strings
         const validPackages = packages.filter(p => typeof p === 'string' && p.trim().length > 0);
         if (validPackages.length === 0) {
           invalidOperations.push(`install_package: no valid package names provided`);
           continue;
         }
-        
+
         operations.push({
           type: "install_package",
           packages: validPackages,
@@ -416,7 +416,7 @@ export class GeminiClient {
       textResponse = result.text || "";
       // Filter out random code blocks
       textResponse = filterResponseText(textResponse);
-      
+
       // CRITICAL: Reject responses that contain code without tool calls
       const hasAnyToolCalls = functionCalls.length > 0 || operations.length > 0;
       if (containsCodeWithoutTools(textResponse, hasAnyToolCalls)) {
@@ -428,19 +428,19 @@ export class GeminiClient {
       if (operations.length > 0) {
         const fileOps = operations.filter(op => op.type === 'write' || op.type === 'delete');
         const installOps = operations.filter(op => op.type === 'install_package');
-        
+
         const parts: string[] = [];
-        
+
         if (fileOps.length > 0) {
           const fileList = fileOps.map(op => `• ${op.path || 'unknown'}`).join('\n');
           parts.push(`Created ${fileOps.length} file operation(s):\n${fileList}`);
         }
-        
+
         if (installOps.length > 0) {
           const packageList = installOps.map(op => op.packages?.join(', ') || 'unknown').join(', ');
           parts.push(`Installing packages: ${packageList}`);
         }
-        
+
         textResponse = parts.join('\n\n');
       }
     }
@@ -466,474 +466,317 @@ export class GeminiClient {
   }> {
     const systemPrompt = this.getSystemPrompt();
 
-    const parts: any[] = [{ text: systemPrompt }];
+    // Build initial conversation state
+    const contents: any[] = [];
 
-    // Add conversation history
+    // 1. System Prompt (as user message)
+    contents.push({
+      role: "user",
+      parts: [{ text: systemPrompt }]
+    });
+
+    // 2. History
     if (conversationHistory) {
       for (const msg of conversationHistory) {
-        if (msg.role === "user") {
-          if (msg.screenshot) {
-            parts.push({
-              inlineData: {
-                mimeType: "image/png",
-                data: msg.screenshot,
-              },
-            });
-          }
-          parts.push({ text: msg.content });
-        } else {
-          parts.push({ text: msg.content });
+        const parts: any[] = [];
+        if (msg.screenshot) {
+          parts.push({
+            inlineData: {
+              mimeType: "image/png",
+              data: msg.screenshot,
+            },
+          });
         }
+        parts.push({ text: msg.content });
+
+        // Map 'assistant' to 'model'
+        const role = msg.role === "assistant" ? "model" : "user";
+        contents.push({ role, parts });
       }
     }
 
-    // Add current message
+    // 3. Current Message
+    const currentParts: any[] = [];
     if (screenshot) {
-      parts.push({
+      currentParts.push({
         inlineData: {
           mimeType: "image/png",
           data: screenshot,
         },
       });
-      parts.push({
+      currentParts.push({
         text: `Here's a screenshot of the current UI. ${userMessage}`
       });
     } else {
-      parts.push({ text: userMessage });
+      currentParts.push({ text: userMessage });
     }
+    contents.push({ role: "user", parts: currentParts });
 
-    const stream = await this.ai.models.generateContentStream({
-      model: this.modelName,
-      contents: [{ role: "user", parts }],
-      config: {
-        temperature: 0.7,
-        topP: 0.95,
-        topK: 40,
-        maxOutputTokens: 16384, // Increased to allow more function calls and content
-        safetySettings: [
-          { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-        ],
-        tools: this.tools,
-        toolConfig: this.toolConfig,
-      }
-    });
+    let iteration = 0;
+    const MAX_ITERATIONS = 5;
+    const allOperations: FileOperation[] = [];
 
-    let fullText = "";
-    let lastFilteredLength = 0;
-    let allFunctionCalls: any[] = [];
+    while (iteration < MAX_ITERATIONS) {
+      iteration++;
 
-    // Stream text chunks
-    for await (const chunk of stream) {
-      // Collect function calls from chunks
-      if (chunk.functionCalls && chunk.functionCalls.length > 0) {
-        allFunctionCalls.push(...chunk.functionCalls);
-      }
-
-      const text = chunk.text || "";
-      if (text) {
-        fullText += text;
-        // Filter accumulated text to handle multi-chunk code blocks
-        const filteredAccumulated = filterResponseText(fullText);
-        // Yield only the new filtered content since last yield
-        const newContent = filteredAccumulated.slice(lastFilteredLength);
-        if (newContent) {
-          yield { text: newContent, done: false };
+      const stream = await this.ai.models.generateContentStream({
+        model: this.modelName,
+        contents: contents,
+        config: {
+          temperature: 0.7,
+          topP: 0.95,
+          topK: 40,
+          maxOutputTokens: 16384,
+          safetySettings: [
+            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+          ],
+          tools: this.tools,
+          toolConfig: this.toolConfig,
         }
-        lastFilteredLength = filteredAccumulated.length;
-      }
-    }
+      });
 
-    // Handle function calls that need execution (read_file, search_project)
-    // These are executed immediately and results are fed back to the AI
-    const functionCallResults: any[] = [];
-    
-    for (const funcCall of allFunctionCalls) {
-      if (funcCall.name === "read_file") {
-        try {
+      let fullText = "";
+      let lastFilteredLength = 0;
+      let currentFunctionCalls: any[] = [];
+
+      // Stream text chunks
+      for await (const chunk of stream) {
+        // Collect function calls from chunks
+        if (chunk.functionCalls && chunk.functionCalls.length > 0) {
+          currentFunctionCalls.push(...chunk.functionCalls);
+        }
+
+        const text = chunk.text || "";
+        if (text) {
+          fullText += text;
+          // Filter accumulated text to handle multi-chunk code blocks
+          const filteredAccumulated = filterResponseText(fullText);
+          // Yield only the new filtered content since last yield
+          const newContent = filteredAccumulated.slice(lastFilteredLength);
+          if (newContent) {
+            yield { text: newContent, done: false };
+          }
+          lastFilteredLength = filteredAccumulated.length;
+        }
+      }
+
+      // Add model response to contents
+      const modelParts: any[] = [];
+      if (fullText) modelParts.push({ text: fullText });
+
+      for (const fc of currentFunctionCalls) {
+        modelParts.push({
+          functionCall: {
+            name: fc.name,
+            args: fc.args
+          }
+        });
+      }
+
+      if (modelParts.length > 0) {
+        contents.push({ role: "model", parts: modelParts });
+      }
+
+      // Extract operations (write_file, delete_file)
+      const turnOperations: FileOperation[] = [];
+      const invalidOperations: string[] = [];
+
+      for (const funcCall of currentFunctionCalls) {
+        if (funcCall.name === "write_file") {
           const path = funcCall.args?.path;
-          const chunk = funcCall.args?.chunk || false;
-          const chunkIndex = funcCall.args?.chunkIndex;
-          const maxChunkSize = funcCall.args?.maxChunkSize || 1000;
-          
-          if (!path) {
-            functionCallResults.push({
-              name: funcCall.name,
-              result: { error: "Missing path parameter" }
-            });
-            continue;
-          }
-
-          // Import WebContainerManager dynamically
-          const { WebContainerManager } = await import("./webcontainer-manager");
-          const content = await WebContainerManager.readFile(path);
-          
-          if (chunk) {
-            const { chunkText } = await import("./embeddings");
-            const chunks = chunkText(content, maxChunkSize);
-            
-            if (chunkIndex !== undefined) {
-              if (chunkIndex < 0 || chunkIndex >= chunks.length) {
-                functionCallResults.push({
-                  name: funcCall.name,
-                  result: { error: `Chunk index ${chunkIndex} out of range. File has ${chunks.length} chunks.` }
-                });
-                continue;
-              }
-              functionCallResults.push({
-                name: funcCall.name,
-                result: {
-                  chunk: chunks[chunkIndex],
-                  chunkIndex,
-                  totalChunks: chunks.length,
-                  path
-                }
-              });
-            } else {
-              functionCallResults.push({
-                name: funcCall.name,
-                result: { chunks, totalChunks: chunks.length, path }
-              });
-            }
+          const content = funcCall.args?.content;
+          if (path && typeof path === 'string' && content !== undefined) {
+            turnOperations.push({ type: "write", path, content: String(content) });
           } else {
-            functionCallResults.push({
-              name: funcCall.name,
-              result: content
-            });
+            invalidOperations.push(`write_file: invalid args`);
           }
-        } catch (error) {
-          functionCallResults.push({
-            name: funcCall.name,
-            result: { error: error instanceof Error ? error.message : "Unknown error" }
-          });
+        } else if (funcCall.name === "delete_file") {
+          const path = funcCall.args?.path;
+          if (path && typeof path === 'string') {
+            turnOperations.push({ type: "delete", path });
+          }
         }
-        continue;
-      }
-      
-      if (funcCall.name === "search_project") {
-        try {
-          const query = funcCall.args?.query;
-          const limit = funcCall.args?.limit || 5;
-          
-          if (!query) {
-            functionCallResults.push({
-              name: funcCall.name,
-              result: { error: "Missing query parameter" }
-            });
-            continue;
-          }
-
-          if (!this.vectorStore) {
-            functionCallResults.push({
-              name: funcCall.name,
-              result: { error: "Vector store not initialized" }
-            });
-            continue;
-          }
-
-          const results = await this.vectorStore.search(query, limit);
-          functionCallResults.push({
-            name: funcCall.name,
-            result: {
-              query,
-              results: results.map(r => ({
-                path: r.path,
-                chunkIndex: r.chunkIndex,
-                content: r.content,
-                score: r.score
-              }))
-            }
-          });
-        } catch (error) {
-          functionCallResults.push({
-            name: funcCall.name,
-            result: { error: error instanceof Error ? error.message : "Unknown error" }
-          });
-        }
-        continue;
+        // Note: install_package is now handled as an informational tool
       }
 
-      if (funcCall.name === "capture_screenshot") {
-        try {
-          // Try to get iframe from ref first, then fall back to global registry
-          let iframe: HTMLIFrameElement | null = null;
-          if (this.iframeRef?.current) {
-            iframe = this.iframeRef.current;
-          } else {
-            iframe = getGlobalIframe();
-          }
 
-          if (!iframe) {
-            functionCallResults.push({
-              name: funcCall.name,
-              result: { error: "Preview iframe not available. The preview may not be loaded yet." }
-            });
-            continue;
-          }
-          
-          // Check if iframe is in the DOM
-          if (!iframe.isConnected) {
-            functionCallResults.push({
-              name: funcCall.name,
-              result: { error: "Preview iframe is not connected to the DOM." }
-            });
-            continue;
-          }
-
-          // Check iframe dimensions
-          const rect = iframe.getBoundingClientRect();
-          if (rect.width === 0 || rect.height === 0) {
-            functionCallResults.push({
-              name: funcCall.name,
-              result: { error: `Preview iframe has zero dimensions (${rect.width}x${rect.height}). The preview may not be visible yet.` }
-            });
-            continue;
-          }
-
-          // Check if iframe has a src
-          if (!iframe.src && !iframe.contentWindow?.location.href) {
-            functionCallResults.push({
-              name: funcCall.name,
-              result: { error: "Preview iframe has no source URL. The preview may not be initialized yet." }
-            });
-            continue;
-          }
-
-          // Try to capture screenshot with retries
-          let screenshot: string | null = null;
-          let lastError: string | null = null;
-          
-          // Try up to 3 times with increasing delays
-          for (let attempt = 0; attempt < 3; attempt++) {
-            if (attempt > 0) {
-              // Wait before retry: 500ms, 1000ms
-              await new Promise(resolve => setTimeout(resolve, 500 * attempt));
-            }
-            
-            try {
-              screenshot = await captureIframeScreenshot(iframe);
-              if (screenshot) {
-                break; // Success!
-              }
-            } catch (e) {
-              lastError = e instanceof Error ? e.message : String(e);
-            }
-          }
-
-          if (!screenshot) {
-            // Provide more detailed error information
-            let errorDetails = "Failed to capture screenshot after multiple attempts.";
-            
-            // Check iframe state
-            const rect = iframe.getBoundingClientRect();
-            if (rect.width === 0 || rect.height === 0) {
-              errorDetails += ` Iframe has zero dimensions (${rect.width}x${rect.height}).`;
-            }
-            
-            // Try to determine if it's cross-origin
-            try {
-              const doc = iframe.contentDocument || iframe.contentWindow?.document;
-              if (!doc) {
-                errorDetails += " Cannot access iframe content (likely cross-origin).";
-              } else {
-                errorDetails += ` Document state: ${doc.readyState}.`;
-                if (!doc.body || doc.body.children.length === 0) {
-                  errorDetails += " Document body is empty.";
-                }
-              }
-            } catch (e) {
-              errorDetails += " Cannot access iframe content (cross-origin restriction).";
-            }
-            
-            if (lastError) {
-              errorDetails += ` Last error: ${lastError}`;
-            }
-            
-            functionCallResults.push({
-              name: funcCall.name,
-              result: { error: errorDetails }
-            });
-            continue;
-          }
-
-          functionCallResults.push({
-            name: funcCall.name,
-            result: {
-              success: true,
-              screenshot: screenshot, // base64 encoded image
-              message: "Screenshot captured successfully"
-            }
-          });
-        } catch (error) {
-          functionCallResults.push({
-            name: funcCall.name,
-            result: { error: error instanceof Error ? error.message : "Unknown error" }
-          });
-        }
-        continue;
+      if (turnOperations.length > 0) {
+        allOperations.push(...turnOperations);
       }
-    }
 
-    // If we have function call results, we need to continue the conversation with those results
-    // For now, we'll include them in the response text
-    if (functionCallResults.length > 0) {
-      const resultsText = functionCallResults.map(fcr => {
-        if (fcr.name === "read_file") {
-          if (fcr.result.error) {
-            return `read_file error: ${fcr.result.error}`;
-          }
-          if (typeof fcr.result === "string") {
-            return `File content:\n${fcr.result}`;
-          }
-          if (fcr.result.chunks) {
-            return `File has ${fcr.result.totalChunks} chunks:\n${fcr.result.chunks.map((c: string, i: number) => `Chunk ${i}:\n${c}`).join("\n\n")}`;
-          }
-          if (fcr.result.chunk) {
-            return `Chunk ${fcr.result.chunkIndex} of ${fcr.result.totalChunks}:\n${fcr.result.chunk}`;
-          }
-        }
-        if (fcr.name === "search_project") {
-          if (fcr.result.error) {
-            return `search_project error: ${fcr.result.error}`;
-          }
-          return `Search results for "${fcr.result.query}":\n${fcr.result.results.map((r: any, i: number) => `${i + 1}. ${r.path} (score: ${r.score.toFixed(3)})\n${r.content.substring(0, 200)}...`).join("\n\n")}`;
-        }
-        if (fcr.name === "capture_screenshot") {
-          if (fcr.result.error) {
-            return `capture_screenshot error: ${fcr.result.error}`;
-          }
-          // Screenshot is included in the result, will be handled by the UI
-          return `Screenshot captured successfully.`;
-        }
-        return JSON.stringify(fcr.result);
-      }).join("\n\n");
-      
-      fullText += "\n\n" + resultsText;
-      
-      // Check if any function calls returned screenshots
-      const screenshotResults = functionCallResults.filter(fcr => 
-        fcr.name === "capture_screenshot" && fcr.result.success && fcr.result.screenshot
+      // Identify informational tools that require continuation
+      const informationalCalls = currentFunctionCalls.filter(fc =>
+        ["read_file", "search_project", "capture_screenshot", "install_package"].includes(fc.name)
       );
-      
-      // Filter the results text to remove any code blocks
-      const filteredResultsText = filterResponseText(resultsText);
-      
-      yield { 
-        text: filteredResultsText, 
-        screenshot: screenshotResults.length > 0 ? screenshotResults[0].result.screenshot : undefined,
-        done: false 
-      };
-    }
 
-    // Extract and validate operations from function calls (write_file, delete_file, install_package)
-    const operations: FileOperation[] = [];
-    const invalidOperations: string[] = [];
-    
-    for (const funcCall of allFunctionCalls) {
-      if (funcCall.name === "write_file") {
-        const path = funcCall.args?.path;
-        const content = funcCall.args?.content;
-        
-        if (!path || typeof path !== 'string') {
-          invalidOperations.push(`write_file: missing or invalid path`);
-          continue;
+      // If no informational calls, we are done
+      if (informationalCalls.length === 0) {
+        // Check for code without tools
+        const filteredFullText = filterResponseText(fullText);
+        const hasAnyToolCalls = currentFunctionCalls.length > 0 || turnOperations.length > 0;
+        if (containsCodeWithoutTools(filteredFullText, hasAnyToolCalls)) {
+          yield {
+            text: 'ERROR: Code was output directly instead of using tools. Please use the write_file tool to create or modify files.',
+            done: false
+          };
         }
-        if (content === undefined || content === null) {
-          invalidOperations.push(`write_file "${path}": missing content`);
-          continue;
+
+        // If we have operations but no text, yield summary
+        if (allOperations.length > 0 && !filteredFullText.trim()) {
+          yield { text: "\n\nProcessing operations...", done: false };
         }
-        
-        operations.push({
-          type: "write",
-          path: path,
-          content: String(content),
+
+        yield { operations: allOperations, done: true };
+        return;
+      }
+
+      // Execute informational tools
+      const functionResponses: any[] = [];
+
+      for (const funcCall of informationalCalls) {
+        let result: any = { error: "Unknown error" };
+
+        if (funcCall.name === "read_file") {
+          try {
+            const path = funcCall.args?.path;
+            const chunk = funcCall.args?.chunk || false;
+            const chunkIndex = funcCall.args?.chunkIndex;
+            const maxChunkSize = funcCall.args?.maxChunkSize || 1000;
+
+            if (path) {
+              const { WebContainerManager } = await import("./webcontainer-manager");
+              const content = await WebContainerManager.readFile(path);
+
+              if (chunk) {
+                const { chunkText } = await import("./embeddings");
+                const chunks = chunkText(content, maxChunkSize);
+                if (chunkIndex !== undefined) {
+                  result = { chunk: chunks[chunkIndex], chunkIndex, totalChunks: chunks.length, path };
+                } else {
+                  result = { chunks, totalChunks: chunks.length, path };
+                }
+              } else {
+                result = content;
+              }
+            } else {
+              result = { error: "Missing path" };
+            }
+          } catch (e) {
+            result = { error: e instanceof Error ? e.message : String(e) };
+          }
+        } else if (funcCall.name === "search_project") {
+          try {
+            const query = funcCall.args?.query;
+            const limit = funcCall.args?.limit || 5;
+            if (query && this.vectorStore) {
+              const results = await this.vectorStore.search(query, limit);
+              result = {
+                query,
+                results: results.map((r: any) => ({
+                  path: r.path,
+                  chunkIndex: r.chunkIndex,
+                  content: r.content,
+                  score: r.score
+                }))
+              };
+            } else {
+              result = { error: "Missing query or vector store not initialized" };
+            }
+          } catch (e) {
+            result = { error: e instanceof Error ? e.message : String(e) };
+          }
+        } else if (funcCall.name === "capture_screenshot") {
+          try {
+            let iframe: HTMLIFrameElement | null = null;
+            if (this.iframeRef?.current) {
+              iframe = this.iframeRef.current;
+            } else {
+              iframe = getGlobalIframe();
+            }
+
+            if (iframe && iframe.isConnected) {
+              // Try to capture screenshot with retries
+              let screenshot: string | null = null;
+              for (let attempt = 0; attempt < 3; attempt++) {
+                if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+                try {
+                  screenshot = await captureIframeScreenshot(iframe);
+                  if (screenshot) break;
+                } catch (e) { }
+              }
+
+              if (screenshot) {
+                result = { success: true, screenshot, message: "Screenshot captured successfully" };
+                // Yield screenshot immediately to UI
+                yield { screenshot, done: false };
+              } else {
+                result = { error: "Failed to capture screenshot" };
+              }
+            } else {
+              result = { error: "Preview iframe not available" };
+            }
+          } catch (e) {
+            result = { error: e instanceof Error ? e.message : String(e) };
+          }
+        } else if (funcCall.name === "install_package") {
+          try {
+            const packages = funcCall.args?.packages;
+            if (Array.isArray(packages) && packages.length > 0) {
+              const validPackages = packages.filter(p => typeof p === 'string' && p.trim().length > 0);
+
+              if (validPackages.length > 0) {
+                const { WebContainerManager } = await import("./webcontainer-manager");
+
+                // Execute package installation
+                const updatedPackageJson = await WebContainerManager.installPackage(validPackages);
+
+                result = {
+                  success: true,
+                  packages: validPackages,
+                  message: `Successfully installed packages: ${validPackages.join(', ')}`,
+                  packageJson: updatedPackageJson
+                };
+
+                // Yield installation status to UI
+                yield {
+                  text: `\n📦 Installing packages: ${validPackages.join(', ')}...\n`,
+                  done: false
+                };
+              } else {
+                result = { error: "No valid packages provided" };
+              }
+            } else {
+              result = { error: "Missing or invalid packages array" };
+            }
+          } catch (e) {
+            result = {
+              error: e instanceof Error ? e.message : String(e),
+              success: false
+            };
+          }
+        }
+
+        functionResponses.push({
+          functionResponse: {
+            name: funcCall.name,
+            response: { name: funcCall.name, content: result }
+          }
         });
-      } else if (funcCall.name === "delete_file") {
-        const path = funcCall.args?.path;
-        
-        if (!path || typeof path !== 'string') {
-          invalidOperations.push(`delete_file: missing or invalid path`);
-          continue;
-        }
-        
-        operations.push({
-          type: "delete",
-          path: path,
-        });
-      } else if (funcCall.name === "install_package") {
-        const packages = funcCall.args?.packages;
-        
-        if (!Array.isArray(packages) || packages.length === 0) {
-          invalidOperations.push(`install_package: missing or invalid packages array`);
-          continue;
-        }
-        
-        // Validate all packages are strings
-        const validPackages = packages.filter(p => typeof p === 'string' && p.trim().length > 0);
-        if (validPackages.length === 0) {
-          invalidOperations.push(`install_package: no valid package names provided`);
-          continue;
-        }
-        
-        operations.push({
-          type: "install_package",
-          packages: validPackages,
-        });
+      }
+
+      if (functionResponses.length > 0) {
+        contents.push({ role: "function", parts: functionResponses });
+        // Loop continues to next iteration to let model see the results
+      } else {
+        break;
       }
     }
 
-    // Log invalid operations for debugging
-    if (invalidOperations.length > 0) {
-      console.warn('Invalid operations detected:', invalidOperations);
-    }
-
-    // Get the final filtered text (already filtered incrementally above)
-    const filteredFullText = filterResponseText(fullText);
-    
-    // CRITICAL: Reject responses that contain code without tool calls
-    const hasAnyToolCalls = allFunctionCalls.length > 0 || operations.length > 0;
-    if (containsCodeWithoutTools(filteredFullText, hasAnyToolCalls)) {
-      console.warn('Rejected response containing code without tool calls:', filteredFullText);
-      yield { 
-        text: 'ERROR: Code was output directly instead of using tools. Please use the write_file tool to create or modify files. Code must never be output in text responses.', 
-        done: false 
-      };
-      yield { operations: [], done: true };
-      return;
-    }
-    
-    // If we have operations but no text was provided, generate a summary with explanation
-    // (Text is already streamed above, so we only need to add summary if missing)
-    if (operations.length > 0 && !filteredFullText.trim()) {
-      const fileOps = operations.filter(op => op.type === 'write' || op.type === 'delete');
-      const installOps = operations.filter(op => op.type === 'install_package');
-      
-      const parts: string[] = [];
-      
-      if (fileOps.length > 0) {
-        const fileList = fileOps.map(op => `• ${op.path || 'unknown'}`).join('\n');
-        parts.push(`Created ${fileOps.length} file operation(s):\n${fileList}`);
-      }
-      
-      if (installOps.length > 0) {
-        const packageList = installOps.map(op => op.packages?.join(', ') || 'unknown').join(', ');
-        parts.push(`Installing packages: ${packageList}`);
-      }
-      
-      // Add a brief explanation
-      if (parts.length > 0) {
-        const summary = parts.join('\n\n');
-        const explanation = fileOps.length > 0 
-          ? `\n\nFiles have been created and are ready to use.`
-          : `\n\nPackages are being installed and will be available shortly.`;
-        yield { text: summary + explanation, done: false };
-      }
-    }
-
-    // Always yield operations, even if empty (so UI knows processing is complete)
-    yield { operations, done: true };
+    // If max iterations reached
+    yield { operations: allOperations, done: true };
   }
 
   /**

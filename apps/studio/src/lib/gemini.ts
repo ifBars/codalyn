@@ -27,7 +27,7 @@ export interface ToolResult {
  */
 export function createModelWithTools(modelName: string = "gemini-2.5-flash-lite"): GenerativeModel {
   const model = gemini.getGenerativeModel({ model: modelName });
-  
+
   // Convert tool definitions to Gemini function declarations
   const functionDeclarations = toolRegistry.map((tool) => ({
     name: tool.name,
@@ -41,10 +41,13 @@ export function createModelWithTools(modelName: string = "gemini-2.5-flash-lite"
 /**
  * Chat with AI agent that can call tools
  */
+/**
+ * Chat with AI agent that can call tools
+ */
 export async function chatWithAgent(
-  userMessage: string,
+  userMessage: string | null,
   context?: {
-    conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>;
+    conversationHistory?: Array<{ role: "user" | "assistant"; content: string; toolCalls?: any[] }>;
     projectFiles?: Record<string, string>;
     currentDiff?: string;
   }
@@ -86,39 +89,98 @@ Remember:
 - **ALWAYS provide a Tool Sequence Summary at the end**`;
 
   // Build conversation history
-  const conversationParts = [
+  const conversationParts: any[] = [
     { role: "user", parts: [{ text: systemPrompt }] },
   ];
 
   if (context?.conversationHistory) {
     for (const msg of context.conversationHistory) {
-      conversationParts.push({
-        role: msg.role === "user" ? "user" : "model",
-        parts: [{ text: msg.content }],
-      });
+      if (msg.role === "assistant" && msg.toolCalls && msg.toolCalls.length > 0) {
+        // Handle assistant message with tool calls
+        const modelParts: any[] = [];
+        if (msg.content) {
+          modelParts.push({ text: msg.content });
+        }
+
+        // Add function calls
+        for (const toolCall of msg.toolCalls) {
+          modelParts.push({
+            functionCall: {
+              name: toolCall.name,
+              args: toolCall.args,
+            },
+          });
+        }
+
+        conversationParts.push({
+          role: "model",
+          parts: modelParts,
+        });
+
+        // Add function responses
+        const functionParts: any[] = [];
+        for (const toolCall of msg.toolCalls) {
+          if (toolCall.result) {
+            functionParts.push({
+              functionResponse: {
+                name: toolCall.name,
+                response: { name: toolCall.name, content: toolCall.result },
+              },
+            });
+          }
+        }
+
+        if (functionParts.length > 0) {
+          conversationParts.push({
+            role: "function",
+            parts: functionParts,
+          });
+        }
+      } else {
+        // Standard message
+        conversationParts.push({
+          role: msg.role === "user" ? "user" : "model",
+          parts: [{ text: msg.content || "" }],
+        });
+      }
     }
   }
 
-  conversationParts.push({
-    role: "user",
-    parts: [{ text: userMessage }],
-  });
+  if (userMessage) {
+    conversationParts.push({
+      role: "user",
+      parts: [{ text: userMessage }],
+    });
+  }
 
   const result = await model.generateContent({
     contents: conversationParts as any,
-    tools: [{ functionDeclarations: toolRegistry.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.parameters,
-    })) }],
+    tools: [{
+      functionDeclarations: toolRegistry.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters,
+      }))
+    }],
   });
 
   const response = await result.response;
-  const text = response.text();
-  
-  // Extract tool calls
+
+  // Extract tool calls first
   const toolCalls: ToolCall[] = [];
   const functionCalls = response.functionCalls();
+
+  // Extract text safely - only get text if there are text parts
+  let text = "";
+  try {
+    const candidates = response.candidates;
+    if (candidates && candidates[0]?.content?.parts) {
+      const textParts = candidates[0].content.parts.filter((part: any) => part.text);
+      text = textParts.map((part: any) => part.text).join("");
+    }
+  } catch (e) {
+    // If extraction fails, text remains empty
+  }
   if (functionCalls) {
     for (const call of functionCalls) {
       toolCalls.push({
@@ -137,10 +199,13 @@ Remember:
 /**
  * Stream chat response
  */
+/**
+ * Stream chat response
+ */
 export async function* streamChatWithAgent(
-  userMessage: string,
+  userMessage: string | null,
   context?: {
-    conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>;
+    conversationHistory?: Array<{ role: "user" | "assistant"; content: string; toolCalls?: any[] }>;
     projectFiles?: Record<string, string>;
   }
 ): AsyncGenerator<string | ToolCall> {
@@ -168,35 +233,94 @@ Remember:
 - **NEVER output code unless you're using a tool**
 - **ALWAYS provide a Tool Sequence Summary at the end**`;
 
-  const conversationParts = [
+  const conversationParts: any[] = [
     { role: "user", parts: [{ text: systemPrompt }] },
   ];
 
   if (context?.conversationHistory) {
     for (const msg of context.conversationHistory) {
-      conversationParts.push({
-        role: msg.role === "user" ? "user" : "model",
-        parts: [{ text: msg.content }],
-      });
+      if (msg.role === "assistant" && msg.toolCalls && msg.toolCalls.length > 0) {
+        // Handle assistant message with tool calls
+        const modelParts: any[] = [];
+        if (msg.content) {
+          modelParts.push({ text: msg.content });
+        }
+
+        // Add function calls
+        for (const toolCall of msg.toolCalls) {
+          modelParts.push({
+            functionCall: {
+              name: toolCall.name,
+              args: toolCall.args,
+            },
+          });
+        }
+
+        conversationParts.push({
+          role: "model",
+          parts: modelParts,
+        });
+
+        // Add function responses
+        const functionParts: any[] = [];
+        for (const toolCall of msg.toolCalls) {
+          if (toolCall.result) {
+            functionParts.push({
+              functionResponse: {
+                name: toolCall.name,
+                response: { name: toolCall.name, content: toolCall.result },
+              },
+            });
+          }
+        }
+
+        if (functionParts.length > 0) {
+          conversationParts.push({
+            role: "function",
+            parts: functionParts,
+          });
+        }
+      } else {
+        // Standard message
+        conversationParts.push({
+          role: msg.role === "user" ? "user" : "model",
+          parts: [{ text: msg.content || "" }],
+        });
+      }
     }
   }
 
-  conversationParts.push({
-    role: "user",
-    parts: [{ text: userMessage }],
-  });
+  if (userMessage) {
+    conversationParts.push({
+      role: "user",
+      parts: [{ text: userMessage }],
+    });
+  }
 
   const result = await model.generateContentStream({
     contents: conversationParts as any,
-    tools: [{ functionDeclarations: toolRegistry.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.parameters,
-    })) }],
+    tools: [{
+      functionDeclarations: toolRegistry.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters,
+      }))
+    }],
   });
 
   for await (const chunk of result.stream) {
-    const text = chunk.text();
+    // Extract text safely
+    let text = "";
+    try {
+      const candidates = chunk.candidates;
+      if (candidates && candidates[0]?.content?.parts) {
+        const textParts = candidates[0].content.parts.filter((part: any) => part.text);
+        text = textParts.map((part: any) => part.text).join("");
+      }
+    } catch (e) {
+      // If extraction fails, text remains empty
+    }
+
     if (text) {
       yield text;
     }

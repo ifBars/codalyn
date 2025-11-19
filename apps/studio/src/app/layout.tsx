@@ -31,7 +31,7 @@ export default function RootLayout({
       className={`${fontSans.variable} ${fontMono.variable}`}
       suppressHydrationWarning
     >
-      <body className="relative min-h-screen bg-background font-sans text-foreground antialiased">
+      <body className="relative min-h-screen bg-background font-sans text-foreground antialiased" suppressHydrationWarning>
         <div className="relative flex min-h-screen flex-col">{children}</div>
       </body>
     </html>

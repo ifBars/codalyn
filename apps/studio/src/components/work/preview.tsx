@@ -34,15 +34,17 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
 
   useEffect(() => {
     async function init() {
+      let initSuccess = false;
       try {
         // Check if there's a saved project with files
         const savedProject = getProjectById(projectId);
         const savedFiles = savedProject?.files;
-        
+
         // Pass saved files to initProject so dependencies are preserved
         const { url } = await WebContainerManager.initProject(savedFiles);
         setPreviewUrl(url);
-        
+        initSuccess = true; // Mark as successful if we got a URL
+
         // Check for vite.config.ts errors after a delay and save fixed version
         // This gives Vite time to start and potentially fail
         setTimeout(async () => {
@@ -50,14 +52,14 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
             // Check if vite.config.ts has the problematic path import
             const viteConfig = await WebContainerManager.readFile("vite.config.ts").catch(() => null);
             if (viteConfig) {
-              const hasPathIssue = viteConfig.includes("import path") || 
-                                   viteConfig.includes("require('path')") ||
-                                   viteConfig.includes('path.resolve');
-              
+              const hasPathIssue = viteConfig.includes("import path") ||
+                viteConfig.includes("require('path')") ||
+                viteConfig.includes('path.resolve');
+
               if (hasPathIssue) {
                 console.log('[Preview] Detected problematic vite.config.ts, fixing...');
                 await WebContainerManager.fixPathAliasConfig();
-                
+
                 // Read the fixed config and save it to project storage
                 const fixedConfig = await WebContainerManager.readFile("vite.config.ts").catch(() => null);
                 if (fixedConfig && savedProject) {
@@ -68,7 +70,7 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
                   }]);
                   console.log('[Preview] Saved fixed vite.config.ts to project storage');
                 }
-                
+
                 // Refresh after fixing
                 setTimeout(() => {
                   if (frameRef.current) {
@@ -84,8 +86,11 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
         }, 5000);
       } catch (error) {
         console.error("Failed to initialize WebContainer", error);
-        setErrors([`Failed to initialize WebContainer: ${error instanceof Error ? error.message : String(error)}`]);
-        setShowErrorPopup(true);
+        // Only show error popup if initialization actually failed (no URL)
+        if (!initSuccess) {
+          setErrors([`Failed to initialize WebContainer: ${error instanceof Error ? error.message : String(error)}`]);
+          setShowErrorPopup(true);
+        }
       } finally {
         setIsLoading(false);
       }
@@ -104,9 +109,9 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
     const findErrorOverlay = (doc: Document): Element | null => {
       // Try multiple strategies to find Vite error overlay
       // Vite typically injects error overlays with specific patterns
-      
+
       const win = doc.defaultView || window;
-      
+
       // Strategy 1: Look for common Vite error overlay selectors
       const selectors = [
         '.vite-error-overlay',
@@ -157,21 +162,21 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
       for (const div of Array.from(allDivs)) {
         const text = div.textContent || '';
         // More specific checks for Vite error patterns
-        const hasViteError = 
+        const hasViteError =
           text.includes('Failed to resolve') ||
           text.includes('plugin:vite:import-analysis') ||
           text.includes('plugin:vite') ||
           (text.includes('Error') && text.includes('vite')) ||
           (text.includes('Failed to resolve import') && text.includes('.tsx')) ||
           (text.includes('Does the file exist?'));
-        
+
         if (hasViteError) {
           try {
             const styles = win.getComputedStyle(div);
             const position = styles.position;
             const zIndex = parseInt(styles.zIndex) || 0;
             const innerHeight = win.innerHeight || 800;
-            
+
             // Check if it's positioned as an overlay
             if (
               (position === 'fixed' || position === 'absolute') &&
@@ -222,7 +227,7 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
     const extractErrorMessages = (overlay: Element): string[] => {
       const errorMessages: string[] = [];
       const overlayText = overlay.textContent || '';
-      
+
       if (!overlayText.trim()) return errorMessages;
 
       // Check for dependency errors first (special handling)
@@ -273,13 +278,13 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
           .filter(line => {
             const trimmed = line.trim();
             return !trimmed.includes('Click outside') &&
-                   !trimmed.includes('press Esc') &&
-                   !trimmed.includes('disable this overlay') &&
-                   trimmed.length > 5;
+              !trimmed.includes('press Esc') &&
+              !trimmed.includes('disable this overlay') &&
+              trimmed.length > 5;
           })
           .join('\n')
           .trim();
-        
+
         if (cleaned.length > 50) {
           errorMessages.push(cleaned.substring(0, 3000));
         }
@@ -297,24 +302,24 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
         if (!iframeDoc || !iframeDoc.body) return;
 
         const errorOverlay = findErrorOverlay(iframeDoc);
-        
+
         if (errorOverlay) {
           const errorMessages = extractErrorMessages(errorOverlay);
 
           if (errorMessages.length > 0) {
             // Check for dependency errors in the messages
-            const hasDependencyError = errorMessages.some(error => 
+            const hasDependencyError = errorMessages.some(error =>
               error.includes('dependencies are imported but could not be resolved') ||
               error.includes('could not be resolved') ||
               error.includes('Are they installed?')
             );
-            
+
             // Check if this is a path alias error and auto-fix it
-            const isPathAliasError = errorMessages.some(error => 
-              error.includes('Failed to resolve import') && 
+            const isPathAliasError = errorMessages.some(error =>
+              error.includes('Failed to resolve import') &&
               (error.includes('@/') || error.includes('@\\'))
             );
-            
+
             if (isPathAliasError && !hasErrorsRef.current) {
               // Auto-fix path alias configuration (non-blocking)
               console.log('[Preview] Auto-detected path alias error, fixing configuration...');
@@ -350,21 +355,21 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
               // Don't show error popup immediately, wait for auto-fix to complete
               return;
             }
-            
+
             // If it's a dependency error, try to auto-install missing packages
             if (hasDependencyError) {
               const allErrorText = errorMessages.join('\n');
               const missingPackages = WebContainerManager.extractMissingPackages(allErrorText);
-              
+
               if (missingPackages.length > 0 && !hasErrorsRef.current) {
                 // Auto-install missing packages (non-blocking)
                 console.log(`[Preview] Auto-detected missing packages: ${missingPackages.join(', ')}`);
                 console.log('[Preview] Attempting to auto-install missing packages...');
-                
+
                 WebContainerManager.installPackage(missingPackages)
                   .then(async (updatedPackageJson) => {
                     console.log(`[Preview] Successfully installed packages: ${missingPackages.join(', ')}`);
-                    
+
                     // Save updated package.json to project storage
                     if (updatedPackageJson) {
                       try {
@@ -381,7 +386,7 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
                         console.warn(`[Preview] Failed to save package.json:`, saveError);
                       }
                     }
-                    
+
                     // Wait for Vite to reload, then refresh preview
                     setTimeout(() => {
                       if (frameRef.current) {
@@ -407,7 +412,7 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
                     setErrors(errorMessages);
                     setShowErrorPopup(true);
                     hasErrorsRef.current = true;
-                    
+
                     // Hide the error overlay in the iframe
                     (errorOverlay as HTMLElement).style.display = 'none';
                     (errorOverlay as HTMLElement).style.visibility = 'hidden';
@@ -418,12 +423,12 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
                 hasErrorsRef.current = true; // Prevent duplicate attempts
                 return;
               }
-              
+
               // If we couldn't extract packages or auto-install already attempted, show popup
               setErrors(errorMessages);
               setShowErrorPopup(true);
               hasErrorsRef.current = true;
-              
+
               // Hide the error overlay in the iframe
               (errorOverlay as HTMLElement).style.display = 'none';
               (errorOverlay as HTMLElement).style.visibility = 'hidden';
@@ -431,11 +436,11 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
               (errorOverlay as HTMLElement).style.pointerEvents = 'none';
               return;
             }
-            
+
             setErrors(errorMessages);
             setShowErrorPopup(true);
             hasErrorsRef.current = true;
-            
+
             // Hide the error overlay in the iframe
             (errorOverlay as HTMLElement).style.display = 'none';
             (errorOverlay as HTMLElement).style.visibility = 'hidden';
@@ -448,16 +453,16 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
           try {
             const bodyText = iframeDoc.body?.textContent || '';
             const bodyHTML = iframeDoc.body?.innerHTML || '';
-            
+
             // Check for dependency errors in body text
             if (bodyText.includes('dependencies are imported but could not be resolved') ||
-                bodyText.includes('The following dependencies') ||
-                bodyText.includes('Are they installed?') ||
-                bodyHTML.includes('dependencies are imported')) {
-              
+              bodyText.includes('The following dependencies') ||
+              bodyText.includes('Are they installed?') ||
+              bodyHTML.includes('dependencies are imported')) {
+
               // Extract the error message
               const depErrorMatch = bodyText.match(/The following dependencies are imported but could not be resolved:[\s\S]*?Are they installed\?/i) ||
-                                   bodyHTML.match(/The following dependencies are imported but could not be resolved:[\s\S]*?Are they installed\?/i);
+                bodyHTML.match(/The following dependencies are imported but could not be resolved:[\s\S]*?Are they installed\?/i);
               if (depErrorMatch && !hasErrorsRef.current) {
                 setErrors([depErrorMatch[0].trim()]);
                 setShowErrorPopup(true);
@@ -465,14 +470,14 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
                 return;
               }
             }
-            
+
             // Check for config errors
             if (bodyText.includes('failed to load config') ||
-                bodyText.includes('Dynamic require') ||
-                bodyText.includes('server restart failed') ||
-                bodyHTML.includes('failed to load config') ||
-                bodyHTML.includes('Dynamic require')) {
-              
+              bodyText.includes('Dynamic require') ||
+              bodyText.includes('server restart failed') ||
+              bodyHTML.includes('failed to load config') ||
+              bodyHTML.includes('Dynamic require')) {
+
               if (!hasErrorsRef.current) {
                 // Auto-fix vite.config.ts (non-blocking)
                 console.log('[Preview] Auto-detected vite.config.ts error, fixing...');
@@ -502,11 +507,11 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
                     console.error('[Preview] Failed to auto-fix vite.config.ts:', fixError);
                     // Show error popup if auto-fix fails
                     const configErrorMatch = bodyText.match(/(failed to load config[^\n]*|Dynamic require[^\n]*|server restart failed[^\n]*)/i) ||
-                                                           bodyHTML.match(/(failed to load config[^<]*|Dynamic require[^<]*|server restart failed[^<]*)/i);
-                    const errorMsg = configErrorMatch 
-                      ? configErrorMatch[0] 
+                      bodyHTML.match(/(failed to load config[^<]*|Dynamic require[^<]*|server restart failed[^<]*)/i);
+                    const errorMsg = configErrorMatch
+                      ? configErrorMatch[0]
                       : 'Vite configuration error: Dynamic require of "path" is not supported. The vite.config.ts file needs to be fixed.';
-                    
+
                     setErrors([errorMsg]);
                     setShowErrorPopup(true);
                     hasErrorsRef.current = true;
@@ -516,14 +521,14 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
                 return;
               }
             }
-            
+
             // Check if page is blank or shows connection error (Vite didn't start)
             // This happens when vite.config.ts has errors
-            if (iframeDoc.body && 
-                (bodyText.trim().length < 50 || 
-                 bodyText.includes('Unable to connect') ||
-                 bodyText.includes('No server listening'))) {
-              
+            if (iframeDoc.body &&
+              (bodyText.trim().length < 50 ||
+                bodyText.includes('Unable to connect') ||
+                bodyText.includes('No server listening'))) {
+
               // Check if we've already shown an error for this
               if (!hasErrorsRef.current) {
                 // Try to read vite.config.ts to see if it has the path issue
@@ -574,7 +579,7 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
           } catch (e) {
             // Ignore errors when checking body text
           }
-          
+
           // No error overlay detected, clear error state if we had errors (but only if no new errors found)
           // Don't clear if we just set errors above
           if (hasErrorsRef.current && errors.length === 0) {
@@ -588,16 +593,16 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
         // This is expected if the iframe hasn't loaded yet or is cross-origin
       }
     };
-    
+
     // Also listen for console errors from the iframe
     const setupConsoleErrorListener = () => {
       try {
         const iframe = frameRef.current;
         if (!iframe || !iframe.contentWindow) return;
-        
+
         // Try to access console (may fail due to CORS)
         const iframeWindow = iframe.contentWindow;
-        
+
         // Override console.error to catch errors
         // Note: This only works if we have same-origin access
         try {
@@ -606,16 +611,16 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
             const originalError = iframeConsole.error;
             iframeConsole.error = (...args: any[]) => {
               originalError.apply(iframeConsole, args);
-              
+
               // Check if this is a dependency error
-              const errorText = args.map(arg => 
+              const errorText = args.map(arg =>
                 typeof arg === 'string' ? arg : JSON.stringify(arg)
               ).join(' ');
-              
+
               if (errorText.includes('dependencies are imported but could not be resolved') ||
-                  errorText.includes('could not be resolved') ||
-                  errorText.includes('Are they installed?')) {
-                
+                errorText.includes('could not be resolved') ||
+                errorText.includes('Are they installed?')) {
+
                 if (!hasErrorsRef.current) {
                   setErrors([errorText]);
                   setShowErrorPopup(true);
@@ -638,7 +643,7 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
         // Inject CSS to hide Vite error overlays
         const styleId = 'codalyn-error-hider';
         let styleEl = doc.getElementById(styleId);
-        
+
         if (!styleEl) {
           styleEl = doc.createElement('style');
           styleEl.id = styleId;
@@ -691,13 +696,13 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
 
         // Also check immediately
         checkForErrors();
-        
+
         // Poll for errors more aggressively to catch console errors
         // This helps catch errors that don't show up in DOM overlays
         const errorPollInterval = setInterval(() => {
           checkForErrors();
         }, 1000);
-        
+
         // Store interval for cleanup
         if (errorCheckIntervalRef.current) {
           clearInterval(errorCheckIntervalRef.current);
@@ -720,7 +725,7 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
         errorCheckIntervalRef.current = setInterval(checkForErrors, 300);
       }, 500);
     };
-    
+
     if (iframe) {
       iframe.addEventListener('load', loadHandler);
       // If already loaded, set up immediately
@@ -740,7 +745,7 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
             errorCheckIntervalRef.current = setInterval(checkForErrors, 300);
           }
         }, 100);
-        
+
         // Cleanup immediate check after 10 seconds
         setTimeout(() => clearInterval(immediateCheck), 10000);
       }
@@ -764,14 +769,14 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
 
   const handleRequestFix = async () => {
     const errorText = errors.join('\n\n');
-    
+
     // Check if this is a vite config error (Dynamic require of "path")
-    const isConfigError = errors.some(error => 
+    const isConfigError = errors.some(error =>
       error.includes('failed to load config') ||
       error.includes('Dynamic require') ||
       error.includes('server restart failed')
     );
-    
+
     if (isConfigError) {
       // Auto-fix vite.config.ts
       try {
@@ -788,13 +793,13 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
         // Fall through to show error
       }
     }
-    
+
     // Check if this is a path alias error (Failed to resolve import with @/)
-    const isPathAliasError = errors.some(error => 
-      error.includes('Failed to resolve import') && 
+    const isPathAliasError = errors.some(error =>
+      error.includes('Failed to resolve import') &&
       (error.includes('@/') || error.includes('@\\'))
     );
-    
+
     if (isPathAliasError) {
       // Automatically fix path alias configuration
       try {
@@ -811,7 +816,7 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
         // Fall through to manual fix
       }
     }
-    
+
     // Check if this is a missing dependencies error
     const missingDepsMatch = errorText.match(/The following dependencies are imported but could not be resolved:[\s\S]*?Are they installed\?/i);
     if (missingDepsMatch) {
@@ -820,20 +825,20 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
       // Also handles ANSI color codes that might be in the error
       const packageMatches = errorText.matchAll(/(?:\[36m)?([a-zA-Z0-9@/._-]+)(?:\[39m)?\s+\(imported by [^)]+\)/g);
       const missingPackages: string[] = [];
-      
+
       for (const match of packageMatches) {
         const pkgName = match[1]?.trim();
         // Filter out ANSI codes and validate package name
         const cleanName = pkgName.replace(/\[[0-9;]+m/g, '').trim();
-        if (cleanName && 
-            cleanName.length > 0 && 
-            !cleanName.includes('[') && 
-            !cleanName.includes('m') &&
-            !missingPackages.includes(cleanName)) {
+        if (cleanName &&
+          cleanName.length > 0 &&
+          !cleanName.includes('[') &&
+          !cleanName.includes('m') &&
+          !missingPackages.includes(cleanName)) {
           missingPackages.push(cleanName);
         }
       }
-      
+
       // Fallback: try simpler pattern if first one didn't work
       if (missingPackages.length === 0) {
         const simpleMatches = errorText.matchAll(/([a-zA-Z0-9@/._-]+)\s+\(imported by [^)]+\)/g);
@@ -844,7 +849,7 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
           }
         }
       }
-      
+
       if (missingPackages.length > 0) {
         // Auto-install missing packages
         try {
@@ -868,14 +873,14 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
         }
       }
     }
-    
+
     // For other errors or if auto-fix failed, request manual fix
     const message = `Please use your tools to examine the codebase and fix the following error(s):\n\n${errorText}`;
-    
+
     if (onRequestFix) {
       onRequestFix(message);
     }
-    
+
     setShowErrorPopup(false);
   };
 
@@ -885,7 +890,7 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
       setErrors([]);
       setShowErrorPopup(false);
       hasErrorsRef.current = false;
-      
+
       // Before refreshing, check and fix vite.config.ts if needed
       try {
         const viteConfig = await WebContainerManager.readFile("vite.config.ts").catch(() => null);
@@ -898,7 +903,7 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
       } catch (e) {
         // Ignore errors
       }
-      
+
       // Try to reload via contentWindow first (more reliable)
       try {
         const iframeWindow = frameRef.current.contentWindow;
@@ -909,7 +914,7 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
       } catch (e) {
         // Cross-origin or other error, fall back to src manipulation
       }
-      
+
       // Fallback: Force reload by appending timestamp to URL
       // This ensures Vite re-resolves all modules and clears cached errors
       const url = new URL(previewUrl);
@@ -930,9 +935,9 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button 
-            variant="ghost" 
-            size="sm" 
+          <Button
+            variant="ghost"
+            size="sm"
             className="h-8 rounded-lg text-xs"
             onClick={handleRefresh}
             title="Refresh preview"
@@ -1025,7 +1030,7 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
                   <X className="h-5 w-5" />
                 </button>
               </div>
-              
+
               <div className="max-h-96 overflow-y-auto px-6 py-4">
                 <div className="space-y-3">
                   {errors.map((error, index) => (

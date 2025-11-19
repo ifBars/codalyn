@@ -9,7 +9,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { ArrowUp, ChevronDown, Eye, FileCode, Image as ImageIcon, Loader2, RefreshCw } from "lucide-react";
+import { ArrowUp, ChevronDown, FileCode, Loader2 } from "lucide-react";
+import Preview from "@/components/work/preview";
 
 import {
   GeminiClient,
@@ -69,8 +70,6 @@ export default function BuilderPage() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
-  const [isHydratingProject, setIsHydratingProject] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [geminiApiKey, setGeminiApiKey] = useState("");
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   const [isGeminiReady, setIsGeminiReady] = useState(false);
@@ -86,11 +85,9 @@ export default function BuilderPage() {
   );
   const [showScreenshotTip, setShowScreenshotTip] = useState(false);
 
-  const iframeRef = useRef<HTMLIFrameElement>(null);
   const geminiClientRef = useRef<GeminiClient | null>(null);
   const vectorStoreRef = useRef<VectorStore | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const hydratedProjectRef = useRef<string | null>(null);
 
   const projectIdFromQuery = searchParams.get("projectId");
 
@@ -113,8 +110,8 @@ export default function BuilderPage() {
   useEffect(() => {
     async function init() {
       try {
-        const { url } = await WebContainerManager.initProject();
-        setPreviewUrl(url);
+        // Ensure WebContainer is booted
+        await WebContainerManager.getInstance();
       } catch (error) {
         console.error("Failed to initialize WebContainer", error);
         setMessages((prev) => [
@@ -169,44 +166,14 @@ export default function BuilderPage() {
     setActiveProject(hydrated);
   }, [projectId]);
 
+  // Sync project files to vector store
   useEffect(() => {
     if (!activeProject || isInitializing) return;
-    if (hydratedProjectRef.current === activeProject.id) return;
 
-    const project = activeProject; // Capture for use in async function
-    let cancelled = false;
-    async function hydrate() {
-      setIsHydratingProject(true);
-      try {
-        await WebContainerManager.replaceProjectFiles(project.files);
-        
-        // Set project files in vector store for lazy indexing
-        // Files will only be indexed when search_project is actually called
-        // This saves API calls when users aren't using semantic search
-        if (vectorStoreRef.current && !cancelled && typeof vectorStoreRef.current.setProjectFiles === 'function') {
-          vectorStoreRef.current.setProjectFiles(project.files);
-        }
-        
-        if (!cancelled) {
-          hydratedProjectRef.current = project.id;
-          setStatusMessage(`Loaded ${project.name} from local storage.`);
-        }
-      } catch (error) {
-        console.error("Failed to hydrate project", error);
-        if (!cancelled) {
-          setProjectError("Something went wrong hydrating the saved files.");
-        }
-      } finally {
-        if (!cancelled) {
-          setIsHydratingProject(false);
-        }
-      }
+    // Set project files in vector store for lazy indexing
+    if (vectorStoreRef.current && typeof vectorStoreRef.current.setProjectFiles === 'function') {
+      vectorStoreRef.current.setProjectFiles(activeProject.files);
     }
-
-    hydrate();
-    return () => {
-      cancelled = true;
-    };
   }, [activeProject, isInitializing]);
 
   useEffect(() => {
@@ -228,18 +195,15 @@ export default function BuilderPage() {
     resetMessages = false
   ) => {
     geminiClientRef.current = new GeminiClient(apiKey, model);
-    
+
     // Initialize vector store if needed
     if (!vectorStoreRef.current) {
       vectorStoreRef.current = new VectorStore(apiKey);
     }
-    
-    // Always set vector store on the client (in case client was recreated)
+
+    // Always set vector store on the client
     geminiClientRef.current.setVectorStore(vectorStoreRef.current);
-    
-    // Set iframe ref for screenshot capture
-    geminiClientRef.current.setIframeRef(iframeRef);
-    
+
     setIsGeminiReady(true);
     if (resetMessages) {
       setMessages(welcomeMessages());
@@ -309,24 +273,12 @@ export default function BuilderPage() {
     }
   };
 
-  const handleRefreshPreview = () => {
-    if (iframeRef.current && previewUrl) {
-      // Try to reload via contentWindow first (more reliable)
-      try {
-        const iframeWindow = iframeRef.current.contentWindow;
-        if (iframeWindow && iframeWindow.location) {
-          iframeWindow.location.reload();
-          return;
-        }
-      } catch (e) {
-        // Cross-origin or other error, fall back to src manipulation
-      }
-      
-      // Fallback: Force reload by appending timestamp to URL
-      // This ensures Vite re-resolves all modules and clears cached errors
-      const url = new URL(previewUrl);
-      url.searchParams.set('_refresh', Date.now().toString());
-      iframeRef.current.src = url.toString();
+  const handleRequestFix = (errorText: string) => {
+    setInput(errorText);
+    // Optional: Focus input
+    const textarea = document.querySelector('textarea');
+    if (textarea) {
+      textarea.focus();
     }
   };
 
@@ -365,8 +317,8 @@ export default function BuilderPage() {
             const next = [...prev];
             const lastMsg = next[next.length - 1];
             if (lastMsg) {
-              next[next.length - 1] = { 
-                ...lastMsg, 
+              next[next.length - 1] = {
+                ...lastMsg,
                 content: fullResponse,
                 screenshot: capturedScreenshot || lastMsg.screenshot
               };
@@ -406,7 +358,7 @@ export default function BuilderPage() {
       if (operations.length > 0) {
         const operationErrors: string[] = [];
         const successfulOps: string[] = [];
-        
+
         // Filter out invalid operations before processing
         const validOperations = operations.filter(op => {
           if (op.type === "write") {
@@ -422,7 +374,7 @@ export default function BuilderPage() {
         // Process operations, continuing even if some fail
         // Track if we need to save updated package.json
         let packageJsonUpdated = false;
-        
+
         for (const op of validOperations) {
           try {
             if (op.type === "install_package" && op.packages) {
@@ -441,7 +393,7 @@ export default function BuilderPage() {
               }
             } else if (op.type === "write" && op.content && op.path) {
               await WebContainerManager.writeFile(op.path, op.content);
-              
+
               // Update vector store with new file content
               if (vectorStoreRef.current) {
                 try {
@@ -450,25 +402,25 @@ export default function BuilderPage() {
                   console.warn(`Failed to update vector store for ${op.path}:`, error);
                 }
               }
-              
+
               successfulOps.push(`Created ${op.path}`);
               console.log(`✓ Wrote ${op.path}`);
             } else if (op.type === "delete" && op.path) {
               await WebContainerManager.rm(op.path);
-              
+
               // Remove from vector store
               if (vectorStoreRef.current) {
                 vectorStoreRef.current.removeFile(op.path);
               }
-              
+
               successfulOps.push(`Deleted ${op.path}`);
               console.log(`✓ Deleted ${op.path}`);
             }
           } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
-            const operationDesc = op.type === "write" ? `write "${op.path}"` : 
-                                 op.type === "delete" ? `delete "${op.path}"` :
-                                 `install packages ${op.packages?.join(', ')}`;
+            const operationDesc = op.type === "write" ? `write "${op.path}"` :
+              op.type === "delete" ? `delete "${op.path}"` :
+                `install packages ${op.packages?.join(', ')}`;
             operationErrors.push(`Failed to ${operationDesc}: ${errorMsg}`);
             console.error(`✗ Failed to ${operationDesc}`, error);
           }
@@ -484,7 +436,7 @@ export default function BuilderPage() {
           summaryParts.push(`\n⚠ ${operationErrors.length} operation(s) failed:`);
           operationErrors.forEach(err => summaryParts.push(`  • ${err}`));
         }
-        
+
         if (summaryParts.length > 0) {
           const summaryText = summaryParts.join('\n');
           setMessages((prev) => {
@@ -508,21 +460,21 @@ export default function BuilderPage() {
 
         // Note: package.json is now saved as part of validOperations when installPackage is called
         // No need to read it separately here
-        
+
         // Save to project storage (only valid operations)
         const updated = applyFileOperationsToProject(activeProject.id, validOperations);
         if (updated) {
           setActiveProject(updated);
           refreshProjects();
-          
+
           // Update vector store with new project files for lazy indexing
           if (vectorStoreRef.current && typeof vectorStoreRef.current.setProjectFiles === 'function') {
             vectorStoreRef.current.setProjectFiles(updated.files);
           }
-          
+
           setStatusMessage("Project saved to browser storage.");
         }
-        
+
         // Don't throw error - continue execution even if some operations failed
         // The errors are already logged and shown to the user
       }
@@ -548,7 +500,6 @@ export default function BuilderPage() {
     }
     setProjectId(nextId);
     setActiveProjectId(nextId);
-    hydratedProjectRef.current = null;
     router.replace(`/builder?projectId=${nextId}`);
   };
 
@@ -653,20 +604,10 @@ export default function BuilderPage() {
     return <LoadingScreen message="Initializing workspace..." submessage="Setting up your development environment" />;
   }
 
-  if (isHydratingProject && activeProject) {
-    return (
-      <LoadingScreen
-        message={`Loading ${activeProject.name}...`}
-        submessage="Restoring project files from local storage"
-      />
-    );
-  }
-
   const canSend =
     !!activeProject &&
     !isLoading &&
     !isInitializing &&
-    !isHydratingProject &&
     Boolean(input.trim()) &&
     geminiClientRef.current;
 
@@ -765,12 +706,6 @@ export default function BuilderPage() {
             </select>
             <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
           </div>
-          {isHydratingProject && (
-            <div className="flex items-center gap-1.5 text-xs text-primary">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              <span>Loading…</span>
-            </div>
-          )}
           {statusMessage && (
             <p className="text-xs text-success">{statusMessage}</p>
           )}
@@ -830,11 +765,10 @@ export default function BuilderPage() {
             {messages.map((msg, idx) => (
               <div
                 key={`${msg.role}-${idx}`}
-                className={`rounded px-3 py-2 text-xs leading-relaxed ${
-                  msg.role === "user"
+                className={`rounded px-3 py-2 text-xs leading-relaxed ${msg.role === "user"
                     ? "bg-primary text-primary-foreground"
                     : "bg-card text-card-foreground"
-                }`}
+                  }`}
               >
                 {msg.screenshot && (
                   <div className="mb-1.5 flex items-center gap-1.5 text-[10px] opacity-80">
@@ -888,7 +822,7 @@ export default function BuilderPage() {
                   }
                 }}
                 placeholder={activeProject ? "Describe what to build next…" : "Select a project first"}
-                disabled={!activeProject || isInitializing || isHydratingProject}
+                disabled={!activeProject || isInitializing}
                 className="flex-1 resize-none rounded border border-border bg-input px-3 py-2 text-xs text-foreground placeholder-muted-foreground focus:border-primary focus:outline-none disabled:opacity-60"
                 rows={2}
               />
@@ -905,43 +839,10 @@ export default function BuilderPage() {
         </div>
 
         <div className="hidden flex-1 flex-col bg-background lg:flex">
-          <div className="flex items-center justify-between border-b border-border px-4 py-2 text-xs text-muted-foreground">
-            <div className="flex items-center gap-1.5">
-              <Eye className="h-3 w-3" />
-              <span>Live preview</span>
-            </div>
-            <div className="flex items-center gap-2">
-              {previewUrl && (
-                <>
-                  <button
-                    onClick={handleRefreshPreview}
-                    className="flex items-center gap-1 rounded px-2 py-1 text-[10px] text-muted-foreground hover:bg-white/10 hover:text-foreground transition-colors"
-                    title="Refresh preview"
-                  >
-                    <RefreshCw className="h-3 w-3" />
-                    Refresh
-                  </button>
-                  <a
-                    href={previewUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[10px] text-primary hover:text-primary/80"
-                  >
-                    Open in new tab
-                  </a>
-                </>
-              )}
-            </div>
-          </div>
-          <div className="flex-1 bg-white">
-            {previewUrl ? (
-              <iframe ref={iframeRef} src={previewUrl} className="h-full w-full border-0" title="Preview" />
-            ) : (
-              <div className="flex h-full items-center justify-center bg-background">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            )}
-          </div>
+          <Preview
+            projectId={activeProject?.id || ""}
+            onRequestFix={handleRequestFix}
+          />
         </div>
       </div>
 
