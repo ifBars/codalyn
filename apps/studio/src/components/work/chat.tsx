@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition, useImperativeHandle, forwardRef } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { createAISession, chatWithAI } from "@/server/actions/ai";
@@ -13,13 +13,17 @@ type Message = {
   toolCalls?: Array<{ name: string; args: any; result?: any }>;
 };
 
-export default function Chat({ 
-  projectId, 
-  sessionId: initialSessionId 
-}: { 
+export interface ChatHandle {
+  sendMessage: (message: string) => void;
+}
+
+const Chat = forwardRef<ChatHandle, { 
   projectId: string;
   sessionId?: string;
-}) {
+}>(({ 
+  projectId, 
+  sessionId: initialSessionId 
+}, ref) => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "seed-1",
@@ -66,17 +70,15 @@ export default function Chat({
     loadHistory();
   }, [initialSessionId, isInitialized]);
 
-  async function send() {
-    const text = input.trim();
-    if (!text || isLoading) return;
+  async function sendMessage(text: string) {
+    if (!text.trim() || isLoading) return;
 
     const userMsg: Message = { 
       id: crypto.randomUUID(), 
       role: "user", 
-      content: text 
+      content: text.trim()
     };
     setMessages((m) => [...m, userMsg]);
-    setInput("");
     setIsLoading(true);
 
     startTransition(async () => {
@@ -92,7 +94,7 @@ export default function Chat({
         // Call AI
         const { response, toolCalls } = await chatWithAI(
           currentSessionId,
-          text,
+          text.trim(),
           projectId
         );
 
@@ -115,6 +117,18 @@ export default function Chat({
       }
     });
   }
+
+  async function send() {
+    const text = input.trim();
+    if (!text) return;
+    setInput("");
+    await sendMessage(text);
+  }
+
+  // Expose sendMessage via ref
+  useImperativeHandle(ref, () => ({
+    sendMessage,
+  }));
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -216,6 +230,8 @@ export default function Chat({
       </div>
     </div>
   );
-}
+});
 
+Chat.displayName = "Chat";
 
+export default Chat;

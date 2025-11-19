@@ -59,8 +59,15 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      '@': new URL('./src', import.meta.url).pathname,
+    },
+  },
   server: {
     port: 5173,
+    host: true, // Allow external connections (needed for WebContainer)
+    strictPort: false, // Allow port fallback if 5173 is busy
   },
 })`,
     },
@@ -110,6 +117,9 @@ export default {
             noUnusedLocals: true,
             noUnusedParameters: true,
             noFallthroughCasesInSwitch: true,
+            paths: {
+              "@/*": ["./src/*"],
+            },
           },
           include: ["src"],
           references: [{ path: "./tsconfig.node.json" }],

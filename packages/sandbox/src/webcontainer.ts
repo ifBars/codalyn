@@ -24,7 +24,42 @@ export class WebContainerSandbox implements SandboxInterface {
 
   async writeFile(path: string, content: string): Promise<void> {
     if (!this.webcontainer) throw new Error("Sandbox not initialized");
-    await this.webcontainer.fs.writeFile(path, content);
+    
+    // Normalize path - ensure consistent forward slashes
+    // Remove leading slash if present (WebContainer uses relative paths from root)
+    const normalizedPath = path.replace(/^\/+/, '').replace(/\/+/g, '/');
+    
+    // Extract directory path and create it if needed
+    const dirPath = normalizedPath.split('/').slice(0, -1).join('/');
+    if (dirPath) {
+      // Create parent directories recursively
+      try {
+        await this.webcontainer.fs.mkdir(dirPath, { recursive: true });
+      } catch (e: any) {
+        // If recursive fails, try creating directories one by one as fallback
+        const parts = dirPath.split('/').filter(Boolean);
+        let currentPath = '';
+        for (const part of parts) {
+          currentPath = currentPath ? `${currentPath}/${part}` : part;
+          try {
+            await this.webcontainer.fs.mkdir(currentPath);
+          } catch (dirError: any) {
+            // Only ignore "directory already exists" errors
+            const isExistsError = 
+              dirError?.code === 'EEXIST' || 
+              dirError?.message?.includes('already exists') ||
+              dirError?.message?.includes('EEXIST');
+            
+            if (!isExistsError) {
+              throw dirError;
+            }
+          }
+        }
+      }
+    }
+    
+    // Write the file
+    await this.webcontainer.fs.writeFile(normalizedPath, content);
   }
 
   async readdir(path: string): Promise<string[]> {

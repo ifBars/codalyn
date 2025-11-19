@@ -28,6 +28,7 @@
     "clsx": "^2.1.0",
     "drizzle-kit": "^0.20.0",
     "drizzle-orm": "^0.29.0",
+    "html2canvas": "^1.4.1",
     "lucide-react": "^0.303.0",
     "next": "^15.0.0",
     "postcss": "^8.4.32",
@@ -40,11 +41,13 @@
     "zustand": "^4.5.0"
   },
   "devDependencies": {
+    "@types/dockerode": "^3.3.46",
     "@types/node": "^20.10.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
-    "typescript": "^5.3.3",
+    "dockerode": "^4.0.9",
     "eslint": "^8.55.0",
-    "eslint-config-next": "^15.0.0"
+    "eslint-config-next": "^15.0.0",
+    "typescript": "^5.3.3"
   }
 }

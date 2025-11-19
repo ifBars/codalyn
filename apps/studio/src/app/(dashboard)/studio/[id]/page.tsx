@@ -24,7 +24,7 @@ type StatusKey = "draft" | "generating" | "ready" | "error" | string;
 
 const statusMeta: Record<
   StatusKey,
-  { label: string; badge: "default" | "accent" | "success" | "destructive" | "outline"; blurb: string }
+  { label: string; badge: "default" | "accent" | "success" | "warning" | "outline"; blurb: string }
 > = {
   draft: {
     label: "Draft",
@@ -43,7 +43,7 @@ const statusMeta: Record<
   },
   error: {
     label: "Needs attention",
-    badge: "destructive",
+    badge: "warning",
     blurb: "Last run raised errors. Review logs to resolve.",
   },
 };
@@ -134,10 +134,11 @@ const fileTree = [
 export default async function StudioPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
   const user = await requireAuth();
-  const project = await getProject(params.id);
+  const { id } = await params;
+  const project = await getProject(id);
 
   if (!project || project.userId !== user.id) {
     redirect("/projects");

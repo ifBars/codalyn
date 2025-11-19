@@ -1,11 +1,12 @@
 "use client";
 
-import type { FileOperation } from "./gemini-client";
+import type { FileOperation, GeminiModelId } from "./gemini-client";
 import { defaultProjectFileMap } from "./project-template";
 
 const PROJECTS_KEY = "codalyn.projects.v1";
 const GEMINI_KEY = "codalyn.geminiKey.v1";
 const ACTIVE_PROJECT_KEY = "codalyn.activeProject.v1";
+const GEMINI_MODEL_KEY = "codalyn.geminiModel.v1";
 
 export interface StoredProject {
   id: string;
@@ -186,3 +187,10 @@ export const clearStoredGeminiKey = () => {
   removeStorage(GEMINI_KEY);
 };
 
+export const getPreferredGeminiModel = (): GeminiModelId | null => {
+  return readStorage<GeminiModelId | null>(GEMINI_MODEL_KEY, null);
+};
+
+export const setPreferredGeminiModel = (model: GeminiModelId) => {
+  writeStorage(GEMINI_MODEL_KEY, model);
+};

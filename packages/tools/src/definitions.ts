@@ -18,7 +18,7 @@ export type ToolDefinition = z.infer<typeof ToolDefinitionSchema>;
  */
 export const readFileTool: ToolDefinition = {
   name: "read_file",
-  description: "Read the contents of a file from the workspace",
+  description: "Read the contents of a file from the workspace. Supports chunking for large files. Use this to examine project files before making changes.",
   parameters: {
     type: "object",
     properties: {
@@ -26,8 +26,42 @@ export const readFileTool: ToolDefinition = {
         type: "string",
         description: "Path to the file relative to workspace root",
       },
+      chunk: {
+        type: "boolean",
+        description: "If true, return file in chunks (useful for large files). Default: false",
+        default: false,
+      },
+      chunkIndex: {
+        type: "number",
+        description: "If chunking is enabled, specify which chunk to read (0-indexed). If not specified, returns all chunks.",
+      },
+      maxChunkSize: {
+        type: "number",
+        description: "Maximum size of each chunk in characters (default: 1000). Only used when chunk=true",
+        default: 1000,
+      },
     },
     required: ["path"],
+  },
+};
+
+export const searchProjectTool: ToolDefinition = {
+  name: "search_project",
+  description: "Search the project codebase using semantic search. Use this to find relevant files and code snippets based on natural language queries. The search uses embeddings to find semantically similar code.",
+  parameters: {
+    type: "object",
+    properties: {
+      query: {
+        type: "string",
+        description: "Natural language search query describing what you're looking for (e.g., 'authentication logic', 'API route handlers', 'component state management')",
+      },
+      limit: {
+        type: "number",
+        description: "Maximum number of results to return (default: 5)",
+        default: 5,
+      },
+    },
+    required: ["query"],
   },
 };
 
@@ -491,6 +525,7 @@ export const toolRegistry: ToolDefinition[] = [
   listDirectoryTool,
   deletePathTool,
   globSearchTool,
+  searchProjectTool,
   // Commands
   runCommandTool,
   // Git

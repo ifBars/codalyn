@@ -24,8 +24,8 @@ export default async function WorkLayout({
       <header className="flex h-14 items-center justify-between border-b border-white/10 bg-background/95 backdrop-blur-sm px-4">
         <div className="flex items-center gap-6">
           <Link href="/projects" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-gradient-to-br from-primary/50 via-primary/20 to-accent/30 text-sm font-semibold text-primary-foreground">
-              C
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-gradient-to-br from-primary/50 via-primary/20 to-accent/30 overflow-hidden">
+              <img src="/logo.png" alt="Codalyn" className="h-full w-full object-contain p-1" />
             </div>
             <span className="text-sm font-semibold">Codalyn</span>
           </Link>

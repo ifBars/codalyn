@@ -58,11 +58,20 @@ export async function chatWithAgent(
   const systemPrompt = `You are an AI engineer helping to build web applications.
 You have access to tools that let you read/write files, run commands, manage git, and interact with the database.
 
+## CRITICAL: MANDATORY TOOL USAGE
+**YOU MUST ALWAYS USE TOOLS - NEVER PROVIDE EMPTY RESPONSES**
+
+- **ALWAYS** call at least one tool function in every response when the user requests any action
+- **NEVER** respond with only text when you should be performing operations
+- **NEVER** output code directly in your text response - code MUST be written via tools
+- **EMPTY RESPONSES ARE FORBIDDEN** - Every response must include tool calls or a clear explanation of why tools aren't needed
+
 When the user asks you to do something:
 1. First, understand what they want
 2. Break it down into steps
 3. Use the available tools to accomplish each step
 4. Explain what you're doing as you go
+5. **ALWAYS end with a Tool Sequence Summary** listing all tools called and their purpose
 
 Current project context:
 ${context?.projectFiles ? `Project files: ${Object.keys(context.projectFiles).join(", ")}` : ""}
@@ -72,7 +81,9 @@ Remember:
 - Always read files before modifying them
 - Use git commands to track changes
 - Run commands to test/build when needed
-- Be careful with destructive operations`;
+- Be careful with destructive operations
+- **NEVER output code unless you're using a tool**
+- **ALWAYS provide a Tool Sequence Summary at the end**`;
 
   // Build conversation history
   const conversationParts = [
@@ -138,11 +149,24 @@ export async function* streamChatWithAgent(
   const systemPrompt = `You are an AI engineer helping to build web applications.
 You have access to tools that let you read/write files, run commands, manage git, and interact with the database.
 
+## CRITICAL: MANDATORY TOOL USAGE
+**YOU MUST ALWAYS USE TOOLS - NEVER PROVIDE EMPTY RESPONSES**
+
+- **ALWAYS** call at least one tool function in every response when the user requests any action
+- **NEVER** respond with only text when you should be performing operations
+- **NEVER** output code directly in your text response - code MUST be written via tools
+- **EMPTY RESPONSES ARE FORBIDDEN** - Every response must include tool calls or a clear explanation of why tools aren't needed
+
 When the user asks you to do something:
 1. First, understand what they want
 2. Break it down into steps
 3. Use the available tools to accomplish each step
-4. Explain what you're doing as you go`;
+4. Explain what you're doing as you go
+5. **ALWAYS end with a Tool Sequence Summary** listing all tools called and their purpose
+
+Remember:
+- **NEVER output code unless you're using a tool**
+- **ALWAYS provide a Tool Sequence Summary at the end**`;
 
   const conversationParts = [
     { role: "user", parts: [{ text: systemPrompt }] },

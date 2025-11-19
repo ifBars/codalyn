@@ -162,7 +162,7 @@ export const fileSnapshotsRelations = relations(fileSnapshots, ({ one }) => ({
 export const deploymentsRelations = relations(deployments, ({ one }) => ({
   project: one(projects, {
     fields: [deployments.projectId],
-    references: [deployments.id],
+    references: [projects.id],
   }),
 }));
 

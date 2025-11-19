@@ -20,6 +20,7 @@ import {
   listProjects,
   setActiveProjectId,
 } from "@/lib/project-storage";
+import { LoadingScreen } from "@/components/ui/loading-screen";
 
 const formatDate = (value?: string) => {
   if (!value) return "—";
@@ -87,6 +88,10 @@ export default function DashboardPage() {
   };
 
   const hasProjects = projects.length > 0;
+
+  if (isSubmitting) {
+    return <LoadingScreen message="Creating project..." submessage="Setting up your workspace" />;
+  }
 
   return (
     <div className="flex min-h-screen flex-col px-4 py-10 sm:px-8">
