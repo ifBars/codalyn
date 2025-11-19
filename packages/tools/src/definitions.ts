@@ -135,6 +135,279 @@ export const globSearchTool: ToolDefinition = {
   },
 };
 
+export const applyPatchTool: ToolDefinition = {
+  name: "apply_patch",
+  description: "Apply targeted changes to an existing file. This is more efficient than rewriting the entire file. You can replace specific line ranges or find/replace text patterns.",
+  parameters: {
+    type: "object",
+    properties: {
+      path: {
+        type: "string",
+        description: "Path to the file to modify",
+      },
+      changes: {
+        type: "array",
+        description: "Array of changes to apply",
+        items: {
+          type: "object",
+          properties: {
+            startLine: {
+              type: "number",
+              description: "Starting line number (1-indexed) for line-based replacement",
+            },
+            endLine: {
+              type: "number",
+              description: "Ending line number (1-indexed, inclusive) for line-based replacement",
+            },
+            newContent: {
+              type: "string",
+              description: "New content to replace the specified lines with",
+            },
+            find: {
+              type: "string",
+              description: "Text pattern to find (alternative to line numbers)",
+            },
+            replace: {
+              type: "string",
+              description: "Text to replace the found pattern with",
+            },
+            replaceAll: {
+              type: "boolean",
+              description: "Replace all occurrences (default: false, only first match)",
+              default: false,
+            },
+          },
+        },
+      },
+    },
+    required: ["path", "changes"],
+  },
+};
+
+export const findInFilesTool: ToolDefinition = {
+  name: "find_in_files",
+  description: "Search for text patterns in files (like grep). Returns matches with file paths, line numbers, and context.",
+  parameters: {
+    type: "object",
+    properties: {
+      pattern: {
+        type: "string",
+        description: "Text or regex pattern to search for",
+      },
+      path: {
+        type: "string",
+        description: "Directory or file to search in (default: workspace root)",
+        default: ".",
+      },
+      includePattern: {
+        type: "string",
+        description: "Glob pattern for files to include (e.g., '*.ts')",
+      },
+      excludePattern: {
+        type: "string",
+        description: "Glob pattern for files to exclude (e.g., 'node_modules/**')",
+      },
+      caseSensitive: {
+        type: "boolean",
+        description: "Case sensitive search (default: true)",
+        default: true,
+      },
+      maxResults: {
+        type: "number",
+        description: "Maximum number of results to return (default: 100)",
+        default: 100,
+      },
+      contextLines: {
+        type: "number",
+        description: "Number of context lines to show around matches (default: 2)",
+        default: 2,
+      },
+    },
+    required: ["pattern"],
+  },
+};
+
+export const renamePathTool: ToolDefinition = {
+  name: "rename_path",
+  description: "Rename or move a file or directory",
+  parameters: {
+    type: "object",
+    properties: {
+      oldPath: {
+        type: "string",
+        description: "Current path",
+      },
+      newPath: {
+        type: "string",
+        description: "New path",
+      },
+    },
+    required: ["oldPath", "newPath"],
+  },
+};
+
+export const copyPathTool: ToolDefinition = {
+  name: "copy_path",
+  description: "Copy a file or directory to a new location",
+  parameters: {
+    type: "object",
+    properties: {
+      source: {
+        type: "string",
+        description: "Source path",
+      },
+      destination: {
+        type: "string",
+        description: "Destination path",
+      },
+      recursive: {
+        type: "boolean",
+        description: "Recursively copy directories (default: false)",
+        default: false,
+      },
+    },
+    required: ["source", "destination"],
+  },
+};
+
+export const getFileInfoTool: ToolDefinition = {
+  name: "get_file_info",
+  description: "Get metadata about a file or directory (size, modified time, permissions, etc.)",
+  parameters: {
+    type: "object",
+    properties: {
+      path: {
+        type: "string",
+        description: "Path to the file or directory",
+      },
+    },
+    required: ["path"],
+  },
+};
+
+export const createDirectoryTool: ToolDefinition = {
+  name: "create_directory",
+  description: "Create a new directory (creates parent directories if they don't exist)",
+  parameters: {
+    type: "object",
+    properties: {
+      path: {
+        type: "string",
+        description: "Path to the directory to create",
+      },
+    },
+    required: ["path"],
+  },
+};
+
+export const replaceInFileTool: ToolDefinition = {
+  name: "replace_in_file",
+  description: "Find and replace text in a file. More convenient than apply_patch for simple text replacements.",
+  parameters: {
+    type: "object",
+    properties: {
+      path: {
+        type: "string",
+        description: "Path to the file",
+      },
+      find: {
+        type: "string",
+        description: "Text or regex pattern to find",
+      },
+      replace: {
+        type: "string",
+        description: "Text to replace with",
+      },
+      replaceAll: {
+        type: "boolean",
+        description: "Replace all occurrences (default: true)",
+        default: true,
+      },
+      regex: {
+        type: "boolean",
+        description: "Treat find pattern as regex (default: false)",
+        default: false,
+      },
+      caseSensitive: {
+        type: "boolean",
+        description: "Case sensitive search (default: true)",
+        default: true,
+      },
+    },
+    required: ["path", "find", "replace"],
+  },
+};
+
+export const insertAtLineTool: ToolDefinition = {
+  name: "insert_at_line",
+  description: "Insert content at a specific line number in a file",
+  parameters: {
+    type: "object",
+    properties: {
+      path: {
+        type: "string",
+        description: "Path to the file",
+      },
+      line: {
+        type: "number",
+        description: "Line number to insert at (1-indexed). Use 0 to insert at beginning, -1 for end",
+      },
+      content: {
+        type: "string",
+        description: "Content to insert",
+      },
+    },
+    required: ["path", "line", "content"],
+  },
+};
+
+export const appendToFileTool: ToolDefinition = {
+  name: "append_to_file",
+  description: "Append content to the end of a file",
+  parameters: {
+    type: "object",
+    properties: {
+      path: {
+        type: "string",
+        description: "Path to the file",
+      },
+      content: {
+        type: "string",
+        description: "Content to append",
+      },
+      newline: {
+        type: "boolean",
+        description: "Add a newline before appending (default: true)",
+        default: true,
+      },
+    },
+    required: ["path", "content"],
+  },
+};
+
+export const readLinesTool: ToolDefinition = {
+  name: "read_lines",
+  description: "Read specific line ranges from a file. More efficient than reading the entire file when you only need certain lines.",
+  parameters: {
+    type: "object",
+    properties: {
+      path: {
+        type: "string",
+        description: "Path to the file",
+      },
+      startLine: {
+        type: "number",
+        description: "Starting line number (1-indexed)",
+      },
+      endLine: {
+        type: "number",
+        description: "Ending line number (1-indexed, inclusive). If not specified, reads to end of file.",
+      },
+    },
+    required: ["path", "startLine"],
+  },
+};
+
 /**
  * Command execution tools
  */
@@ -521,10 +794,20 @@ export const envWriteTool: ToolDefinition = {
 export const toolRegistry: ToolDefinition[] = [
   // Filesystem
   readFileTool,
+  readLinesTool,
   writeFileTool,
+  appendToFileTool,
+  insertAtLineTool,
+  applyPatchTool,
+  replaceInFileTool,
   listDirectoryTool,
+  createDirectoryTool,
   deletePathTool,
+  renamePathTool,
+  copyPathTool,
+  getFileInfoTool,
   globSearchTool,
+  findInFilesTool,
   searchProjectTool,
   // Commands
   runCommandTool,
