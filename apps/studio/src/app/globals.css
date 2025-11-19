@@ -3,28 +3,29 @@
 @tailwind utilities;
 
 :root {
-  --background: 0 0% 0%;
+  --background: 240 10% 3.9%;
   --foreground: 0 0% 98%;
 
-  --card: 0 0% 8%;
+  --card: 240 10% 3.9%;
   --card-foreground: 0 0% 98%;
 
-  --popover: 0 0% 10%;
+  --popover: 240 10% 3.9%;
   --popover-foreground: 0 0% 98%;
 
-  --primary: 217 91% 60%;
+  --primary: 0 0% 75%;
+  /* Vivid Purple */
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 0 0% 12%;
+  --secondary: 240 4% 16%;
   --secondary-foreground: 0 0% 98%;
 
-  --muted: 0 0% 10%;
-  --muted-foreground: 0 0% 65%;
+  --muted: 240 4% 16%;
+  --muted-foreground: 240 5% 64.9%;
 
-  --accent: 217 91% 60%;
+  --accent: 252 100% 68%;
   --accent-foreground: 0 0% 100%;
 
-  --destructive: 0 84% 60%;
+  --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 0 0% 98%;
 
   --success: 142 71% 45%;
@@ -36,20 +37,20 @@
   --info: 199 89% 48%;
   --info-foreground: 0 0% 100%;
 
-  --border: 0 0% 15%;
-  --input: 0 0% 12%;
-  --ring: 217 91% 60%;
+  --border: 240 6% 15%;
+  --input: 240 6% 15%;
+  --ring: 252 100% 68%;
 
   --grid-color: 255, 255, 255;
   --spotlight-color: 59, 130, 246;
   --primary-rgb: 59, 130, 246;
 
-  --radius: 12px;
+  --radius: 0.75rem;
 }
 
 @media (max-width: 768px) {
   :root {
-    --radius: 14px;
+    --radius: 0.5rem;
   }
 }
 
@@ -65,7 +66,7 @@
   body {
     @apply min-h-screen bg-background text-foreground antialiased;
     @apply selection:bg-primary/30 selection:text-primary-foreground;
-    background-image: 
+    background-image:
       linear-gradient(to right, rgba(var(--grid-color), 0.03) 1px, transparent 1px),
       linear-gradient(to bottom, rgba(var(--grid-color), 0.03) 1px, transparent 1px);
     background-size: 24px 24px;
@@ -92,7 +93,7 @@
   }
 
   .bg-grid-sm {
-    background-image: 
+    background-image:
       linear-gradient(to right, rgba(var(--grid-color), 0.04) 1px, transparent 1px),
       linear-gradient(to bottom, rgba(var(--grid-color), 0.04) 1px, transparent 1px);
     background-size: 24px 24px;
@@ -111,12 +112,10 @@
     position: absolute;
     inset: -1px;
     border-radius: inherit;
-    background: linear-gradient(
-      120deg,
-      rgba(var(--primary-rgb), 0.65),
-      rgba(56, 189, 248, 0.35),
-      rgba(236, 72, 153, 0.35)
-    );
+    background: linear-gradient(120deg,
+        rgba(var(--primary-rgb), 0.65),
+        rgba(56, 189, 248, 0.35),
+        rgba(236, 72, 153, 0.35));
     z-index: -1;
     opacity: 0.7;
   }
@@ -124,24 +123,32 @@
 
 /* Animated Background Gradients */
 @keyframes float {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translate(0, 0) scale(1);
   }
+
   33% {
     transform: translate(50px, -50px) scale(1.15);
   }
+
   66% {
     transform: translate(-40px, 40px) scale(0.85);
   }
 }
 
 @keyframes float-reverse {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translate(0, 0) scale(1);
   }
+
   33% {
     transform: translate(-50px, 50px) scale(0.85);
   }
+
   66% {
     transform: translate(40px, -40px) scale(1.15);
   }
@@ -151,25 +158,32 @@
   0% {
     transform: translate(0, 0) rotate(0deg) scale(1);
   }
+
   25% {
     transform: translate(80px, -80px) rotate(90deg) scale(1.2);
   }
+
   50% {
     transform: translate(-60px, 60px) rotate(180deg) scale(0.9);
   }
+
   75% {
     transform: translate(70px, 70px) rotate(270deg) scale(1.1);
   }
+
   100% {
     transform: translate(0, 0) rotate(360deg) scale(1);
   }
 }
 
 @keyframes pulse-glow {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 0.4;
     transform: translate(-50%, -50%) scale(1);
   }
+
   50% {
     opacity: 0.6;
     transform: translate(-50%, -50%) scale(1.1);
@@ -180,9 +194,11 @@
   0% {
     stroke-dashoffset: 314;
   }
+
   50% {
     stroke-dashoffset: 0;
   }
+
   100% {
     stroke-dashoffset: -314;
   }
@@ -254,4 +270,3 @@
   animation: float-reverse 22s ease-in-out infinite;
   animation-delay: -12s;
 }
-
