@@ -14,6 +14,8 @@ export class WebContainerManager {
   private static bootPromise: Promise<WebContainer> | null = null;
   private static devProcess: any | null = null;
   private static serverUrl: string | null = null;
+  private static initPromise: Promise<{ container: WebContainer; url: string }> | null = null;
+  private static isInitialized: boolean = false;
 
   static async getInstance(): Promise<WebContainer> {
     if (this.instance) {
@@ -37,7 +39,59 @@ export class WebContainerManager {
     container: WebContainer;
     url: string;
   }> {
+    // If already initialized and we have a server URL, return it
+    if (this.isInitialized && this.serverUrl && this.devProcess) {
+      console.log(`[init] Project already initialized, reusing server at ${this.serverUrl}`);
+      const container = await this.getInstance();
+      return { container, url: this.serverUrl };
+    }
+
+    // If initialization is in progress, wait for it to complete
+    if (this.initPromise) {
+      console.log(`[init] Initialization already in progress, waiting...`);
+      return this.initPromise;
+    }
+
+    // Start initialization
+    this.initPromise = this._doInit(savedFiles);
+    
+    try {
+      const result = await this.initPromise;
+      this.isInitialized = true;
+      // Clear init promise after successful initialization
+      this.initPromise = null;
+      return result;
+    } catch (error) {
+      // Reset init promise on error so we can retry
+      this.initPromise = null;
+      throw error;
+    }
+  }
+
+  /**
+   * Internal initialization method
+   * @param savedFiles Optional saved project files to merge with template
+   */
+  private static async _doInit(savedFiles?: Record<string, string>): Promise<{
+    container: WebContainer;
+    url: string;
+  }> {
     const container = await this.getInstance();
+
+    // Kill any existing dev process before starting a new one
+    if (this.devProcess) {
+      console.log(`[init] Killing existing dev process...`);
+      try {
+        this.devProcess.kill();
+        // Wait a bit for the process to terminate
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (error) {
+        console.warn(`[init] Error killing existing dev process:`, error);
+      }
+      this.devProcess = null;
+      this.serverUrl = null;
+      this.isInitialized = false; // Reset initialization state since we're starting fresh
+    }
 
     // Prepare files to mount - merge template with saved files if provided
     let filesToMount: FileSystemTree;

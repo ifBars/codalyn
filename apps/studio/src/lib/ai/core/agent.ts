@@ -179,7 +179,21 @@ export class Agent {
 
             let currentResponseText = "";
             const currentToolCalls: ToolCall[] = [];
+            const seenToolCallKeys = new Set<string>();
             let chunkCount = 0;
+
+            // Helper to create a unique key for a tool call
+            const getToolCallKey = (toolCall: ToolCall): string => {
+                if (toolCall.id) {
+                    return toolCall.id;
+                }
+                // Use name + args as fallback key
+                try {
+                    return `${toolCall.name}:${JSON.stringify(toolCall.args)}`;
+                } catch {
+                    return `${toolCall.name}:${String(toolCall.args)}`;
+                }
+            };
 
             for await (const chunk of stream) {
                 chunkCount++;
@@ -187,15 +201,21 @@ export class Agent {
                     currentResponseText += chunk.content;
                     yield { type: "thought", content: chunk.content };
                 } else if (chunk.type === "tool_call" && chunk.toolCall) {
-                    currentToolCalls.push(chunk.toolCall);
-                    console.log(`[AI Debug] Received tool call chunk: ${chunk.toolCall.name}`);
-                    yield { type: "tool_call", toolCall: chunk.toolCall };
+                    const key = getToolCallKey(chunk.toolCall);
+                    if (!seenToolCallKeys.has(key)) {
+                        seenToolCallKeys.add(key);
+                        currentToolCalls.push(chunk.toolCall);
+                        console.log(`[AI Debug] Received tool call chunk: ${chunk.toolCall.name}`);
+                        yield { type: "tool_call", toolCall: chunk.toolCall };
+                    } else {
+                        console.log(`[AI Debug] Skipping duplicate tool call: ${chunk.toolCall.name} (key: ${key})`);
+                    }
                 }
             }
             const streamDuration = Date.now() - streamStartTime;
             console.log(`[AI Debug] Stream completed (${streamDuration}ms, ${chunkCount} chunks)`);
             console.log(`[AI Debug] Response text length: ${currentResponseText.length} chars`);
-            console.log(`[AI Debug] Tool calls received: ${currentToolCalls.length}`);
+            console.log(`[AI Debug] Tool calls received: ${currentToolCalls.length} (after deduplication)`);
 
             // If no tool calls, we're done
             if (currentToolCalls.length === 0) {

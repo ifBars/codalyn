@@ -409,38 +409,33 @@ export const readLinesTool: ToolDefinition = {
 };
 
 /**
- * Command execution tools
+ * Bun script execution tool
  */
-export const runCommandTool: ToolDefinition = {
-  name: "run_command",
-  description: "Execute a shell command in the workspace",
+export const bunRunTool: ToolDefinition = {
+  name: "bun_run",
+  description: "Run a Bun script from package.json. DO NOT use this to start dev servers (they are managed automatically).",
   parameters: {
     type: "object",
     properties: {
-      command: {
+      script: {
         type: "string",
-        description: "Shell command to execute",
+        description: "Script name from package.json to run (e.g., 'build', 'lint', 'type-check')",
       },
-      cwd: {
+      args: {
+        type: "array",
+        items: { type: "string" },
+        description: "Additional arguments to pass to the script",
+      },
+      workspace: {
         type: "string",
-        description: "Working directory (default: workspace root)",
+        description: "Workspace name to run script in a specific workspace",
       },
-      env: {
-        type: "object",
-        description: "Environment variables to set",
-        additionalProperties: { type: "string" },
-      },
-      timeout: {
-        type: "number",
-        description: "Timeout in milliseconds (default: 30000)",
-      },
-      background: {
-        type: "boolean",
-        description: "Run in background (default: false)",
-        default: false,
+      filter: {
+        type: "string",
+        description: "Filter pattern for workspaces (e.g., '@codalyn/*')",
       },
     },
-    required: ["command"],
+    required: ["script"],
   },
 };
 
@@ -806,8 +801,8 @@ export const toolRegistry: ToolDefinition[] = [
   globSearchTool,
   findInFilesTool,
   searchProjectTool,
-  // Commands
-  runCommandTool,
+  // Package management
+  bunRunTool,
   // Git
   gitStatusTool,
   gitBranchTool,

@@ -5,6 +5,7 @@ import { defaultProjectFileMap } from "./project-template";
 
 const PROJECTS_KEY = "codalyn.projects.v1";
 const GEMINI_KEY = "codalyn.geminiKey.v1";
+const CONTEXT7_KEY = "codalyn.context7Key.v1";
 const ACTIVE_PROJECT_KEY = "codalyn.activeProject.v1";
 const GEMINI_MODEL_KEY = "codalyn.geminiModel.v1";
 
@@ -193,4 +194,16 @@ export const getPreferredGeminiModel = (): GeminiModelId | null => {
 
 export const setPreferredGeminiModel = (model: GeminiModelId) => {
   writeStorage(GEMINI_MODEL_KEY, model);
+};
+
+export const getStoredContext7Key = (): string | null => {
+  return readStorage<string | null>(CONTEXT7_KEY, null);
+};
+
+export const setStoredContext7Key = (apiKey: string) => {
+  writeStorage(CONTEXT7_KEY, apiKey);
+};
+
+export const clearStoredContext7Key = () => {
+  removeStorage(CONTEXT7_KEY);
 };

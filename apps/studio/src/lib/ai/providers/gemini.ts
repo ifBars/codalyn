@@ -14,6 +14,7 @@ import {
 } from "../core/types";
 import { filterResponseText, containsCodeWithoutTools } from "../core/filters";
 import { parseToolCalls } from "../core/parser";
+import { getExecutor } from "@codalyn/tools";
 
 export interface GeminiAdapterConfig {
     apiKey: string;
@@ -39,7 +40,12 @@ export class GeminiAdapter implements ModelAdapter {
         console.log(`[AI Debug] Input messages: ${messages.length}`);
         console.log(`[AI Debug] Available tools: ${tools.length}`);
         if (tools.length > 0) {
-            console.log(`[AI Debug] Tool names:`, tools.map(t => t.name));
+            const toolsWithExecutors = tools.filter(t => getExecutor(t.name) !== undefined);
+            const toolsWithoutExecutors = tools.filter(t => getExecutor(t.name) === undefined);
+            console.log(`[AI Debug] Tool names (with executors):`, toolsWithExecutors.map(t => t.name));
+            if (toolsWithoutExecutors.length > 0) {
+                console.log(`[AI Debug] Tool names (without executors - will fail if called):`, toolsWithoutExecutors.map(t => t.name));
+            }
         }
 
         const contents = this.convertMessagesToGemini(messages);
@@ -131,7 +137,12 @@ export class GeminiAdapter implements ModelAdapter {
         console.log(`[AI Debug] Input messages: ${messages.length}`);
         console.log(`[AI Debug] Available tools: ${tools.length}`);
         if (tools.length > 0) {
-            console.log(`[AI Debug] Tool names:`, tools.map(t => t.name));
+            const toolsWithExecutors = tools.filter(t => getExecutor(t.name) !== undefined);
+            const toolsWithoutExecutors = tools.filter(t => getExecutor(t.name) === undefined);
+            console.log(`[AI Debug] Tool names (with executors):`, toolsWithExecutors.map(t => t.name));
+            if (toolsWithoutExecutors.length > 0) {
+                console.log(`[AI Debug] Tool names (without executors - will fail if called):`, toolsWithoutExecutors.map(t => t.name));
+            }
         }
 
         const contents = this.convertMessagesToGemini(messages);

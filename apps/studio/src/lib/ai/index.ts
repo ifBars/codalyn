@@ -32,6 +32,8 @@ export type { BrowserToolSetConfig } from "./tools/browser";
 export { CompositeToolSet } from "./tools/composite";
 export { VectorStoreToolSet } from "./tools/vector-store";
 export type { VectorStoreToolSetConfig } from "./tools/vector-store";
+export { Context7ToolSet } from "./tools/context7";
+export type { Context7ToolSetConfig } from "./tools/context7";
 
 // Sandbox
 export { WebContainerSandbox } from "./sandbox/webcontainer-sandbox";

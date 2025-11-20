@@ -25,6 +25,7 @@ import {
   CodalynToolSet,
   BrowserToolSet,
   VectorStoreToolSet,
+  Context7ToolSet,
   WebContainerSandbox,
   GeminiAdapter,
   ConversationMemory,
@@ -36,15 +37,18 @@ import {
   StoredProject,
   applyFileOperationsToProject,
   clearStoredGeminiKey,
+  clearStoredContext7Key,
   getActiveProjectId,
   getProjectById,
   getPreferredGeminiModel,
   getStoredGeminiKey,
+  getStoredContext7Key,
   listProjects,
   markProjectOpened,
   setActiveProjectId,
   setPreferredGeminiModel,
   setStoredGeminiKey,
+  setStoredContext7Key,
 } from "@/lib/project-storage";
 import { WebContainerManager } from "@/lib/webcontainer-manager";
 import { LoadingScreen } from "@/components/ui/loading-screen";
@@ -83,7 +87,9 @@ export default function BuilderPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [geminiApiKey, setGeminiApiKey] = useState("");
+  const [context7ApiKey, setContext7ApiKey] = useState("");
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
+  const [context7ApiKeyError, setContext7ApiKeyError] = useState<string | null>(null);
   const [isGeminiReady, setIsGeminiReady] = useState(false);
   const [isCheckingKey, setIsCheckingKey] = useState(true);
   const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
@@ -192,11 +198,15 @@ export default function BuilderPage() {
     const preferredModel = getPreferredGeminiModel() ?? DEFAULT_GEMINI_MODEL;
     setSelectedModel(preferredModel);
     const storedKey = getStoredGeminiKey();
+    const storedContext7Key = getStoredContext7Key();
     if (storedKey) {
-      connectGeminiClient(storedKey, preferredModel, true);
+      connectGeminiClient(storedKey, preferredModel, true, storedContext7Key);
       setGeminiApiKey(storedKey);
     } else {
       setIsKeyModalOpen(true);
+    }
+    if (storedContext7Key) {
+      setContext7ApiKey(storedContext7Key);
     }
     setIsCheckingKey(false);
   }, []);
@@ -204,7 +214,8 @@ export default function BuilderPage() {
   const connectGeminiClient = (
     apiKey: string,
     model: GeminiModelId,
-    resetMessages = false
+    resetMessages = false,
+    context7ApiKey?: string | null
   ) => {
     // Initialize vector store if needed
     if (!vectorStoreRef.current) {
@@ -220,13 +231,21 @@ export default function BuilderPage() {
     const vectorStoreTools = new VectorStoreToolSet({
       vectorStore: vectorStoreRef.current,
     });
-
-    // Combine tool sets
-    const compositeTools = new CompositeToolSet([
+    
+    // Add Context7 tools if API key is available
+    const toolSets: any[] = [
       codalynTools,
       browserTools,
       vectorStoreTools,
-    ]);
+    ];
+    
+    if (context7ApiKey) {
+      const context7Tools = new Context7ToolSet({ apiKey: context7ApiKey });
+      toolSets.push(context7Tools);
+    }
+
+    // Combine tool sets
+    const compositeTools = new CompositeToolSet(toolSets);
 
     // Create memory with system prompt
     const memory = new ConversationMemory(getDefaultSystemPrompt());
@@ -297,19 +316,31 @@ export default function BuilderPage() {
       return;
     }
 
+    // Validate Context7 key if provided (optional)
+    const trimmedContext7 = context7ApiKey.trim();
+    if (trimmedContext7) {
+      // Context7 keys are typically alphanumeric, but we'll accept any non-empty string
+      setStoredContext7Key(trimmedContext7);
+    } else {
+      clearStoredContext7Key();
+    }
+
     setStoredGeminiKey(trimmed);
-    connectGeminiClient(trimmed, selectedModel, true);
+    connectGeminiClient(trimmed, selectedModel, true, trimmedContext7 || null);
     setIsKeyModalOpen(false);
     setApiKeyError(null);
-    setStatusMessage("Gemini key saved privately in this browser.");
+    setContext7ApiKeyError(null);
+    setStatusMessage("API keys saved privately in this browser.");
   };
 
   const handleClearApiKey = () => {
     clearStoredGeminiKey();
+    clearStoredContext7Key();
     agentRef.current = null;
     setIsGeminiReady(false);
     setIsKeyModalOpen(true);
     setGeminiApiKey("");
+    setContext7ApiKey("");
     setMessages([]);
   };
 
@@ -317,8 +348,9 @@ export default function BuilderPage() {
     setSelectedModel(nextModel);
     setPreferredGeminiModel(nextModel);
     const storedKey = getStoredGeminiKey();
+    const storedContext7Key = getStoredContext7Key();
     if (storedKey) {
-      connectGeminiClient(storedKey, nextModel);
+      connectGeminiClient(storedKey, nextModel, false, storedContext7Key);
       const label =
         GEMINI_MODEL_OPTIONS.find((option) => option.id === nextModel)?.label ??
         nextModel;
@@ -399,6 +431,26 @@ export default function BuilderPage() {
       const toolCalls: any[] = [];
       const toolResults: any[] = [];
 
+      // Helper function to update message with current operations (for real-time display)
+      const updateMessageWithOperations = () => {
+        // Extract operations from current tool calls and results
+        // Use empty results array initially to show operations as they come in
+        const currentOps = extractFileOperations(toolCalls, toolResults);
+        setMessages((prev) => {
+          const next = [...prev];
+          const lastMsg = next[next.length - 1];
+          if (lastMsg) {
+            next[next.length - 1] = {
+              ...lastMsg,
+              content: fullResponse,
+              screenshot: capturedScreenshot || lastMsg.screenshot,
+              operations: currentOps.length > 0 ? currentOps : undefined,
+            };
+          }
+          return next;
+        });
+      };
+
       // Process agent stream
       for await (const event of agentRef.current.runStream(userMessage)) {
         if (event.type === "thought") {
@@ -411,6 +463,7 @@ export default function BuilderPage() {
                 ...lastMsg,
                 content: fullResponse,
                 screenshot: capturedScreenshot || lastMsg.screenshot,
+                operations: lastMsg.operations, // Preserve existing operations
               };
             }
             return next;
@@ -421,6 +474,8 @@ export default function BuilderPage() {
           if (event.toolCall.name === "capture_screenshot") {
             setShowScreenshotTip(true);
           }
+          // Update operations in real-time as tool calls arrive
+          updateMessageWithOperations();
         } else if (event.type === "tool_result") {
           toolResults.push(event.toolResult);
           
@@ -434,12 +489,18 @@ export default function BuilderPage() {
                 const next = [...prev];
                 const lastMsg = next[next.length - 1];
                 if (lastMsg) {
-                  next[next.length - 1] = { ...lastMsg, screenshot };
+                  next[next.length - 1] = { 
+                    ...lastMsg, 
+                    screenshot,
+                    operations: lastMsg.operations, // Preserve operations
+                  };
                 }
                 return next;
               });
             }
           }
+          // Update operations when results come in (to filter out failed ones)
+          updateMessageWithOperations();
         } else if (event.type === "response") {
           fullResponse = event.content;
           setMessages((prev) => {
@@ -450,6 +511,7 @@ export default function BuilderPage() {
                 ...lastMsg,
                 content: fullResponse,
                 screenshot: capturedScreenshot || lastMsg.screenshot,
+                operations: lastMsg.operations, // Preserve existing operations
               };
             }
             return next;
@@ -458,6 +520,18 @@ export default function BuilderPage() {
           // Extract file operations from tool calls and results using improved parser
           const extractedOps = extractFileOperations(toolCalls, toolResults);
           operations = filterValidFileOperations(extractedOps);
+          // Final update with validated operations
+          setMessages((prev) => {
+            const next = [...prev];
+            const lastMsg = next[next.length - 1];
+            if (lastMsg) {
+              next[next.length - 1] = {
+                ...lastMsg,
+                operations: operations.length > 0 ? operations : undefined,
+              };
+            }
+            return next;
+          });
         }
       }
 
@@ -475,19 +549,27 @@ export default function BuilderPage() {
         for (const op of validOperations) {
           try {
             if (op.type === "install_package" && op.packages) {
-              const updatedPackageJson = await WebContainerManager.installPackage(op.packages);
-              successfulOps.push(`Installed packages: ${op.packages.join(', ')}`);
-              console.log(`✓ Installed packages: ${op.packages.join(', ')}`);
-              if (updatedPackageJson) {
-                packageJsonUpdated = true; // Mark that package.json was updated
-                // Add package.json update to operations so it gets saved
-                validOperations.push({
-                  type: "write",
-                  path: "package.json",
-                  content: updatedPackageJson,
-                });
-                console.log(`✓ Added package.json update to operations`);
+              // Skip install_package operations - they're already handled by the tool executor
+              // The npm_install tool executor calls sandbox.installPackage() which handles installation
+              // But we still need to read the updated package.json to save it
+              console.log(`⏭️ Skipping duplicate install_package operation (already handled by tool executor): ${op.packages.join(', ')}`);
+              try {
+                const updatedPackageJson = await WebContainerManager.readFile("package.json");
+                if (updatedPackageJson) {
+                  packageJsonUpdated = true;
+                  // Add package.json update to operations so it gets saved
+                  validOperations.push({
+                    type: "write",
+                    path: "package.json",
+                    content: updatedPackageJson,
+                  });
+                  console.log(`✓ Read updated package.json after installation`);
+                }
+              } catch (readError) {
+                console.warn(`⚠️ Could not read package.json after installation:`, readError);
               }
+              successfulOps.push(`Packages already installed: ${op.packages.join(', ')}`);
+              continue;
             } else if (op.type === "write" && op.content && op.path) {
               await WebContainerManager.writeFile(op.path, op.content);
 
@@ -610,7 +692,7 @@ export default function BuilderPage() {
         )}
       </div>
       <p className="mt-4 text-sm text-muted-foreground">
-        Your Gemini key stays inside this browser and never leaves your device.
+        Your API keys stay inside this browser and never leave your device.
         Codalyn does not proxy or log any requests.
       </p>
       <form
@@ -622,7 +704,7 @@ export default function BuilderPage() {
       >
         <div className="space-y-2">
           <label className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
-            Gemini API key
+            Gemini API key <span className="text-destructive">*</span>
           </label>
           <input
             type="password"
@@ -644,6 +726,35 @@ export default function BuilderPage() {
               className="font-medium text-primary hover:underline"
             >
               Google AI Studio
+            </a>
+            .
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
+            Context7 API key <span className="text-muted-foreground">(optional)</span>
+          </label>
+          <input
+            type="password"
+            value={context7ApiKey}
+            onChange={(event) => {
+              setContext7ApiKey(event.target.value);
+              setContext7ApiKeyError(null);
+            }}
+            placeholder="Enter your Context7 API key..."
+            className="w-full rounded-lg border border-border bg-input px-4 py-3 text-base text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+          {context7ApiKeyError && <p className="text-sm text-destructive">{context7ApiKeyError}</p>}
+          <p className="text-xs text-muted-foreground">
+            Enable access to up-to-date library documentation. Get your key at {" "}
+            <a
+              href="https://context7.com/dashboard"
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-primary hover:underline"
+            >
+              Context7 Dashboard
             </a>
             .
           </p>
@@ -744,7 +855,9 @@ export default function BuilderPage() {
           <button
             onClick={() => {
               setGeminiApiKey(getStoredGeminiKey() ?? "");
+              setContext7ApiKey(getStoredContext7Key() ?? "");
               setApiKeyError(null);
+              setContext7ApiKeyError(null);
               setIsKeyModalOpen(true);
             }}
             className="text-xs text-primary transition hover:text-primary/80"
@@ -864,23 +977,9 @@ export default function BuilderPage() {
                   </div>
                 )}
                 {msg.role === "assistant" ? (
-                  <MarkdownContent content={msg.content} />
+                  <MarkdownContent content={msg.content} operations={msg.operations} />
                 ) : (
                   <p className="whitespace-pre-wrap">{msg.content}</p>
-                )}
-                {msg.operations && msg.operations.length > 0 && (
-                  <div className="mt-2 space-y-0.5 rounded bg-background/50 p-2 text-[10px]">
-                    <div className="font-medium opacity-70">
-                      {msg.operations.length} file operation{msg.operations.length !== 1 ? "s" : ""}:
-                    </div>
-                    {msg.operations.map((op, i) => (
-                      <div key={i} className="opacity-60">
-                        • {op.type === "install_package"
-                          ? `install ${op.packages?.join(', ')}`
-                          : `${op.type} ${op.path}`}
-                      </div>
-                    ))}
-                  </div>
                 )}
               </div>
             ))}
@@ -888,7 +987,7 @@ export default function BuilderPage() {
             {isLoading && (
               <div className="flex items-center gap-2 rounded border border-border bg-card px-3 py-2 text-xs text-card-foreground">
                 <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                <span>AI is thinking…</span>
+                <span>AI is working…</span>
               </div>
             )}
           </div>
@@ -921,7 +1020,7 @@ export default function BuilderPage() {
                 onClick={() => handleSend()}
                 disabled={!canSend}
                 className="rounded bg-primary p-2 text-primary-foreground transition hover:opacity-90 disabled:opacity-40"
-                title="Send message (AI can capture screenshots automatically when needed)"
+                title="Send message"
               >
                 <ArrowUp className="h-4 w-4" />
               </button>
