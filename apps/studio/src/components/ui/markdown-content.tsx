@@ -15,14 +15,14 @@ interface MarkdownContentProps {
 /**
  * Action card component for displaying inline operation indicators
  */
-function ActionCard({ 
-  icon: Icon, 
-  label, 
+function ActionCard({
+  icon: Icon,
+  label,
   detail,
   variant = "default"
-}: { 
-  icon: React.ComponentType<{ className?: string }>; 
-  label: string; 
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
   detail?: string;
   variant?: "default" | "thinking" | "plan";
 }) {
@@ -46,11 +46,11 @@ function ActionCard({
 /**
  * Thinking card component with collapsible content and timing display
  */
-function ThinkingCard({ 
+function ThinkingCard({
   content,
   timing,
   isActive = true
-}: { 
+}: {
   content: string;
   timing?: string;
   isActive?: boolean; // Whether thinking is still active (stops timer when false)
@@ -68,7 +68,7 @@ function ThinkingCard({
     const hasContent = content.length > 0;
     const isContentGrowing = content.length > lastContentLengthRef.current;
     const isNewContent = hasContent && lastContentLengthRef.current === 0;
-    
+
     // Start tracking time when content first appears
     if (isNewContent) {
       startTimeRef.current = Date.now();
@@ -76,7 +76,7 @@ function ThinkingCard({
       setElapsedSeconds(0);
       lastContentLengthRef.current = content.length;
       isStoppedRef.current = false;
-    } 
+    }
     // Continue tracking if content is still growing (streaming)
     else if (isContentGrowing && startTimeRef.current !== null && !isStoppedRef.current) {
       lastContentLengthRef.current = content.length;
@@ -99,7 +99,7 @@ function ThinkingCard({
       const finalElapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
       setElapsedSeconds(finalElapsed);
       isStoppedRef.current = true;
-      
+
       // Clear interval
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -114,13 +114,13 @@ function ThinkingCard({
 
     const checkIfStopped = () => {
       // If content hasn't updated in 2 seconds, stop the timer
-      if (lastUpdateTimeRef.current !== null) {
+      if (lastUpdateTimeRef.current !== null && startTimeRef.current !== null) {
         const timeSinceLastUpdate = Date.now() - lastUpdateTimeRef.current;
         if (timeSinceLastUpdate > 2000 && !isStoppedRef.current) {
           const finalElapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
           setElapsedSeconds(finalElapsed);
           isStoppedRef.current = true;
-          
+
           if (intervalRef.current) {
             clearInterval(intervalRef.current);
             intervalRef.current = null;
@@ -211,14 +211,14 @@ function parseContentSections(content: string): {
   const planPattern = /^Plan:?\s*$/mi;
   const planMatch = content.match(planPattern);
   const planStartIndex = planMatch ? planMatch.index! : -1;
-  
+
   let planEndIndex = -1;
   if (planStartIndex >= 0) {
     // Find where plan ends (look for "FINAL OUTPUT:", "Next:", "Starting", or section markers)
     const afterPlan = content.substring(planStartIndex);
     const finalOutputMatch = afterPlan.match(/\n(?:FINAL OUTPUT|Next|Starting|I have|I will|The (?:site|component|page|visual changes))/mi);
-    planEndIndex = finalOutputMatch 
-      ? planStartIndex + finalOutputMatch.index! 
+    planEndIndex = finalOutputMatch
+      ? planStartIndex + finalOutputMatch.index!
       : content.length;
   }
 
@@ -226,7 +226,7 @@ function parseContentSections(content: string): {
   const thinkingSections: Array<{ start: number; end: number; text: string }> = [];
   const sections = content.split(/\n\n+/);
   let currentIndex = 0;
-  
+
   // Patterns that indicate non-thinking content (welcome messages, greetings, final summaries, etc.)
   const nonThinkingPatterns = [
     /^(?:👋|Hi!|Hello|Hey)/i, // Greetings
@@ -236,35 +236,35 @@ function parseContentSections(content: string): {
     /^(?:Plan|#|##|###)/i, // Plans and headings
     /^(?:Summary|In summary|To summarize|Final summary|To sum up|In conclusion)/i, // Final summaries
   ];
-  
+
   // Patterns that indicate summary content (even if not at start)
   const summaryPatterns = [
     /\b(?:summary|summarize|summarizing|in summary|to summarize|final summary|to sum up|in conclusion|conclusion)\b/i,
   ];
-  
+
   for (const section of sections) {
     const sectionStart = currentIndex;
     const sectionEnd = currentIndex + section.length;
     const trimmedSection = section.trim();
-    
+
     // Skip if it's a plan section
     if (planStartIndex >= 0 && sectionStart >= planStartIndex && sectionEnd <= planEndIndex) {
       currentIndex = sectionEnd + 2; // +2 for \n\n
       continue;
     }
-    
+
     // Skip if it matches non-thinking patterns (welcome messages, greetings, summaries, etc.)
     const isNonThinking = nonThinkingPatterns.some(pattern => pattern.test(trimmedSection));
     if (isNonThinking) {
       currentIndex = sectionEnd + 2;
       continue;
     }
-    
+
     // Check if this section is a final summary
     const contentLength = content.length;
     const isNearEnd = sectionStart > contentLength * 0.7;
     const hasSummaryLanguage = summaryPatterns.some(pattern => pattern.test(trimmedSection));
-    
+
     // Patterns that indicate completed work (past tense, summary of actions taken)
     // More specific patterns to avoid false positives with thinking language
     const completedWorkPatterns = [
@@ -274,19 +274,19 @@ function parseContentSections(content: string): {
       /\b(?:The (?:component|page|site|feature) (?:is|has been) (?:now|complete|ready|updated|created))\b/i,
     ];
     const describesCompletedWork = completedWorkPatterns.some(pattern => pattern.test(trimmedSection));
-    
+
     // Skip if it's a final summary (near end + summary language) or describes completed work
     if ((isNearEnd && hasSummaryLanguage) || (isNearEnd && describesCompletedWork)) {
       currentIndex = sectionEnd + 2;
       continue;
     }
-    
+
     // Skip very short sections (likely not substantial thinking)
     if (trimmedSection.length < 100) {
       currentIndex = sectionEnd + 2;
       continue;
     }
-    
+
     // Only consider it a thinking section if:
     // 1. It's substantial text (at least 100 chars)
     // 2. It doesn't match non-thinking patterns
@@ -294,7 +294,7 @@ function parseContentSections(content: string): {
     // 4. It's not a final summary
     // 5. It contains descriptive/analytical language (indicates actual thinking)
     const hasAnalyticalLanguage = /\b(?:I have|I will|I need to|Let me|This|The|analyzing|considering|thinking|planning|deciding)\b/i.test(trimmedSection);
-    
+
     if (hasAnalyticalLanguage && trimmedSection.length >= 100) {
       thinkingSections.push({
         start: sectionStart,
@@ -302,7 +302,7 @@ function parseContentSections(content: string): {
         text: trimmedSection.substring(0, 100) + (trimmedSection.length > 100 ? "..." : ""),
       });
     }
-    
+
     currentIndex = sectionEnd + 2;
   }
 
@@ -325,26 +325,26 @@ export function MarkdownContent({ content, className = "", operations = [] }: Ma
   // Filter out thinking sections from the content that will be rendered
   const filteredContent = React.useMemo(() => {
     if (contentSections.thinkingSections.length === 0) return content;
-    
+
     // Build filtered content by keeping everything except thinking sections
     // Sort sections by start index to process them in order
     const sectionsToRemove = [...contentSections.thinkingSections].sort((a, b) => a.start - b.start);
-    
+
     let filtered = '';
     let lastIndex = 0;
-    
+
     for (const section of sectionsToRemove) {
       // Add content before this thinking section
       filtered += content.substring(lastIndex, section.start);
       lastIndex = section.end;
     }
-    
+
     // Add remaining content after the last thinking section
     filtered += content.substring(lastIndex);
-    
+
     // Clean up multiple consecutive newlines that might result from removal
     filtered = filtered.replace(/\n\n\n+/g, '\n\n');
-    
+
     return filtered.trim();
   }, [content, contentSections]);
 
@@ -366,7 +366,7 @@ export function MarkdownContent({ content, className = "", operations = [] }: Ma
     if (uniqueOperations.length === 0) return null;
 
     const cards: JSX.Element[] = [];
-    
+
     uniqueOperations.forEach((op, idx) => {
       if (op.type === "write" && op.path) {
         cards.push(
@@ -407,12 +407,12 @@ export function MarkdownContent({ content, className = "", operations = [] }: Ma
   // Generate plan action card
   const planCard = React.useMemo(() => {
     if (!contentSections.hasPlan) return null;
-    
+
     const planText = content.substring(
       contentSections.planStartIndex,
       Math.min(contentSections.planStartIndex + 200, contentSections.planEndIndex)
     ).trim();
-    
+
     return (
       <div className="my-2 flex flex-wrap items-center gap-2">
         <ActionCard
@@ -428,15 +428,15 @@ export function MarkdownContent({ content, className = "", operations = [] }: Ma
   // Generate thinking action cards
   const thinkingCards = React.useMemo(() => {
     if (contentSections.thinkingSections.length === 0) return null;
-    
+
     // Only show first thinking section as a card
     const firstThinking = contentSections.thinkingSections[0];
     const fullThinkingText = content.substring(firstThinking.start, firstThinking.end);
-    
+
     // Thinking is active if no operations have occurred yet (no tool calls)
     // Once tool calls happen, thinking phase has ended
     const isThinkingActive = uniqueOperations.length === 0;
-    
+
     return (
       <ThinkingCard
         content={fullThinkingText}
@@ -463,7 +463,7 @@ export function MarkdownContent({ content, className = "", operations = [] }: Ma
   const components: Components = React.useMemo(() => {
     // Reset paragraph index at start of render for this content
     paragraphIndexRef.current = 0;
-    
+
     return {
       // Headings
       h1: ({ children }) => (
@@ -479,14 +479,14 @@ export function MarkdownContent({ content, className = "", operations = [] }: Ma
       p: ({ children, ...props }) => {
         const currentIndex = paragraphIndexRef.current;
         paragraphIndexRef.current += 1;
-        
+
         const wasInserted = insertionRef.current === contentKey;
         const shouldInsertCards = currentIndex === 0 && !wasInserted && (planCard || thinkingCards || toolActionCards);
-        
+
         if (shouldInsertCards) {
           // Mark as inserted immediately to prevent duplicates
           insertionRef.current = contentKey;
-          
+
           return (
             <>
               <p className="mb-1.5 last:mb-0 leading-relaxed" {...props}>{children}</p>
@@ -504,80 +504,80 @@ export function MarkdownContent({ content, className = "", operations = [] }: Ma
             </>
           );
         }
-        
+
         return (
           <p className="mb-1.5 last:mb-0 leading-relaxed" {...props}>{children}</p>
         );
       },
-    // Lists - support nested lists
-    ul: ({ children }) => (
-      <ul className="mb-1.5 ml-4 list-disc space-y-0.5 last:mb-0 [&_ul]:mt-1 [&_ul]:ml-4 [&_ul]:list-[circle] [&_ul_ul]:list-[square]">
-        {children}
-      </ul>
-    ),
-    ol: ({ children }) => (
-      <ol className="mb-1.5 ml-4 list-decimal space-y-0.5 last:mb-0 [&_ol]:mt-1 [&_ol]:ml-4 [&_ol]:list-[lower-alpha] [&_ol_ol]:list-[lower-roman]">
-        {children}
-      </ol>
-    ),
-    li: ({ children }) => (
-      <li className="leading-relaxed [&>p]:mb-1 [&>p]:last:mb-0">{children}</li>
-    ),
-    // Tables
-    table: ({ children }) => (
-      <div className="my-4 overflow-x-auto">
-        <table className="min-w-full border-collapse border border-border text-sm">
+      // Lists - support nested lists
+      ul: ({ children }) => (
+        <ul className="mb-1.5 ml-4 list-disc space-y-0.5 last:mb-0 [&_ul]:mt-1 [&_ul]:ml-4 [&_ul]:list-[circle] [&_ul_ul]:list-[square]">
           {children}
-        </table>
-      </div>
-    ),
-    thead: ({ children }) => (
-      <thead className="bg-muted/30">{children}</thead>
-    ),
-    tbody: ({ children }) => <tbody>{children}</tbody>,
-    tr: ({ children }) => (
-      <tr className="border-b border-border/30 last:border-0">{children}</tr>
-    ),
-    th: ({ children }) => (
-      <th className="px-3 py-2 text-left font-medium text-foreground/80">{children}</th>
-    ),
-    td: ({ children }) => (
-      <td className="px-3 py-2 text-foreground/70">{children}</td>
-    ),
-    // Images
-    img: ({ src, alt, ...props }) => (
-      <img
-        src={src}
-        alt={alt}
-        className="my-4 max-w-full rounded-lg border border-border"
-        {...props}
-      />
-    ),
-    // Blockquotes
-    blockquote: ({ children }) => (
-      <blockquote className="mb-2 border-l-2 border-border/50 pl-3 italic last:mb-0">
-        {children}
-      </blockquote>
-    ),
-    // Links
-    a: ({ href, children }) => (
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-primary underline hover:text-primary/80"
-      >
-        {children}
-      </a>
-    ),
-    // Strong/Bold
-    strong: ({ children }) => (
-      <strong className="font-semibold">{children}</strong>
-    ),
-    // Emphasis/Italic
-    em: ({ children }) => (
-      <em className="italic">{children}</em>
-    ),
+        </ul>
+      ),
+      ol: ({ children }) => (
+        <ol className="mb-1.5 ml-4 list-decimal space-y-0.5 last:mb-0 [&_ol]:mt-1 [&_ol]:ml-4 [&_ol]:list-[lower-alpha] [&_ol_ol]:list-[lower-roman]">
+          {children}
+        </ol>
+      ),
+      li: ({ children }) => (
+        <li className="leading-relaxed [&>p]:mb-1 [&>p]:last:mb-0">{children}</li>
+      ),
+      // Tables
+      table: ({ children }) => (
+        <div className="my-4 overflow-x-auto">
+          <table className="min-w-full border-collapse border border-border text-sm">
+            {children}
+          </table>
+        </div>
+      ),
+      thead: ({ children }) => (
+        <thead className="bg-muted/30">{children}</thead>
+      ),
+      tbody: ({ children }) => <tbody>{children}</tbody>,
+      tr: ({ children }) => (
+        <tr className="border-b border-border/30 last:border-0">{children}</tr>
+      ),
+      th: ({ children }) => (
+        <th className="px-3 py-2 text-left font-medium text-foreground/80">{children}</th>
+      ),
+      td: ({ children }) => (
+        <td className="px-3 py-2 text-foreground/70">{children}</td>
+      ),
+      // Images
+      img: ({ src, alt, ...props }) => (
+        <img
+          src={src}
+          alt={alt}
+          className="my-4 max-w-full rounded-lg border border-border"
+          {...props}
+        />
+      ),
+      // Blockquotes
+      blockquote: ({ children }) => (
+        <blockquote className="mb-2 border-l-2 border-border/50 pl-3 italic last:mb-0">
+          {children}
+        </blockquote>
+      ),
+      // Links
+      a: ({ href, children }) => (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary underline hover:text-primary/80"
+        >
+          {children}
+        </a>
+      ),
+      // Strong/Bold
+      strong: ({ children }) => (
+        <strong className="font-semibold">{children}</strong>
+      ),
+      // Emphasis/Italic
+      em: ({ children }) => (
+        <em className="italic">{children}</em>
+      ),
       // Horizontal rule
       hr: () => (
         <hr className="my-3 border-border/50" />

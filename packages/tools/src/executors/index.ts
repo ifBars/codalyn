@@ -46,6 +46,13 @@ import { sandboxInfoExecutor } from "./sandbox/sandbox_info";
 import { portListExecutor } from "./sandbox/port_list";
 import { openPortExecutor } from "./sandbox/open_port";
 
+// Browser executors
+import { captureScreenshotExecutor } from "./browser/capture_screenshot";
+
+// Context7 executors
+import { context7GetDocsExecutor } from "./context7/context7_get_docs";
+import { context7ResolveLibraryExecutor } from "./context7/context7_resolve_library";
+
 // Re-export types
 export * from "./types";
 import type { ToolExecutor } from "./types";
@@ -90,6 +97,11 @@ export const executorRegistry: Map<string, ToolExecutor> = new Map([
   ["sandbox_info", sandboxInfoExecutor],
   ["port_list", portListExecutor],
   ["open_port", openPortExecutor],
+  // Browser
+  ["capture_screenshot", captureScreenshotExecutor],
+  // Context7
+  ["context7_get_docs", context7GetDocsExecutor],
+  ["context7_resolve_library", context7ResolveLibraryExecutor],
 ]);
 
 export function getExecutor(toolName: string): ToolExecutor | undefined {
