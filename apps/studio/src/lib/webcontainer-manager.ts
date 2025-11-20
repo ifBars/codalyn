@@ -16,6 +16,16 @@ export class WebContainerManager {
   private static serverUrl: string | null = null;
   private static initPromise: Promise<{ container: WebContainer; url: string }> | null = null;
   private static isInitialized: boolean = false;
+  private static errorCallback: ((error: string) => void) | null = null;
+  private static currentProjectFilesHash: string | null = null;
+
+  /**
+   * Register a callback to be called when internal server errors are detected
+   * @param callback Function to call with error message
+   */
+  static setErrorCallback(callback: ((error: string) => void) | null): void {
+    this.errorCallback = callback;
+  }
 
   static async getInstance(): Promise<WebContainer> {
     if (this.instance) {
@@ -39,9 +49,31 @@ export class WebContainerManager {
     container: WebContainer;
     url: string;
   }> {
-    // If already initialized and we have a server URL, return it
-    if (this.isInitialized && this.serverUrl && this.devProcess) {
-      console.log(`[init] Project already initialized, reusing server at ${this.serverUrl}`);
+    // Calculate hash of provided files to detect project changes
+    const filesHash = savedFiles ? JSON.stringify(Object.keys(savedFiles).sort().map(k => `${k}:${savedFiles[k]?.substring(0, 100)}`)).substring(0, 200) : null;
+    const isDifferentProject = filesHash && filesHash !== this.currentProjectFilesHash;
+
+    // If already initialized but switching to a different project, replace files
+    if (this.isInitialized && this.serverUrl && this.devProcess && isDifferentProject && savedFiles) {
+      console.log(`[init] Switching to different project, replacing files...`);
+      try {
+        // Replace project files
+        await this.replaceProjectFiles(savedFiles);
+        this.currentProjectFilesHash = filesHash;
+        const container = await this.getInstance();
+        return { container, url: this.serverUrl };
+      } catch (error) {
+        console.warn(`[init] Failed to replace project files, reinitializing:`, error);
+        // Fall through to reinitialize if replace fails
+        this.isInitialized = false;
+        this.serverUrl = null;
+        this.devProcess = null;
+        this.currentProjectFilesHash = null;
+      }
+    }
+
+    // If already initialized with the same project, return existing instance
+    if (this.isInitialized && this.serverUrl && this.devProcess && !isDifferentProject) {
       const container = await this.getInstance();
       return { container, url: this.serverUrl };
     }
@@ -58,6 +90,7 @@ export class WebContainerManager {
     try {
       const result = await this.initPromise;
       this.isInitialized = true;
+      this.currentProjectFilesHash = filesHash;
       // Clear init promise after successful initialization
       this.initPromise = null;
       return result;
@@ -91,6 +124,7 @@ export class WebContainerManager {
       this.devProcess = null;
       this.serverUrl = null;
       this.isInitialized = false; // Reset initialization state since we're starting fresh
+      this.currentProjectFilesHash = null; // Reset project hash
     }
 
     // Prepare files to mount - merge template with saved files if provided
@@ -317,6 +351,20 @@ export class WebContainerManager {
             text.includes('Dynamic require') ||
             text.includes('server restart failed')) {
             console.error(`[vite] Config error: ${text.substring(0, 500)}`);
+          }
+
+          // Check for Internal server errors
+          if (text.includes('Internal server error') || 
+              text.match(/500\s+Internal\s+Server\s+Error/i) ||
+              text.includes('Internal Server Error')) {
+            const errorMessage = WebContainerManager.extractInternalServerError(text);
+            console.error(`[vite] Internal server error detected: ${errorMessage}`);
+            
+            // Trigger the error callback if registered
+            if (WebContainerManager.errorCallback) {
+              const formattedError = `Internal Server Error detected in Vite dev server:\n\n${errorMessage}`;
+              WebContainerManager.errorCallback(formattedError);
+            }
           }
         },
       })
@@ -1004,6 +1052,67 @@ export class WebContainerManager {
         // Don't throw - allow project to load even if install fails
       }
     }
+  }
+
+  /**
+   * Extract internal server error details from Vite output
+   * @param outputText The output text from Vite
+   * @returns Formatted error message
+   */
+  static extractInternalServerError(outputText: string): string {
+    // Try to extract the error message and stack trace
+    const lines = outputText.split('\n');
+    const errorLines: string[] = [];
+    let capturingError = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      // Start capturing when we see "Internal server error"
+      if (line.includes('Internal server error') || 
+          line.match(/500\s+Internal\s+Server\s+Error/i) ||
+          line.includes('Internal Server Error')) {
+        capturingError = true;
+        errorLines.push(line.trim());
+        continue;
+      }
+
+      // Capture error details (stack traces, error messages, etc.)
+      if (capturingError) {
+        // Stop capturing at empty lines if we've captured enough context
+        if (line.trim() === '' && errorLines.length > 10) {
+          break;
+        }
+        
+        // Capture error-related lines (stack traces, file paths, etc.)
+        if (line.trim().length > 0) {
+          errorLines.push(line.trim());
+        }
+        
+        // Limit to reasonable size (prevent huge error dumps)
+        if (errorLines.length > 50) {
+          break;
+        }
+      }
+    }
+
+    // If we didn't capture much, try to get context around the error
+    if (errorLines.length === 0) {
+      const errorIndex = outputText.indexOf('Internal server error') !== -1 
+        ? outputText.indexOf('Internal server error')
+        : outputText.search(/500\s+Internal\s+Server\s+Error/i);
+      
+      if (errorIndex !== -1) {
+        const contextStart = Math.max(0, errorIndex - 200);
+        const contextEnd = Math.min(outputText.length, errorIndex + 1000);
+        const context = outputText.substring(contextStart, contextEnd);
+        return context.trim();
+      }
+    }
+
+    return errorLines.length > 0 
+      ? errorLines.join('\n')
+      : outputText.substring(0, 1000); // Fallback to first 1000 chars
   }
 
   /**

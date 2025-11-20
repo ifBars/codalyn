@@ -12,14 +12,19 @@ import {
 import { ArrowUp, ChevronDown, FileCode, Loader2 } from "lucide-react";
 import Preview from "@/components/work/preview";
 import { MarkdownContent } from "@/components/ui/markdown-content";
+import { SpinningLogo } from "@/components/landing/SpinningLogo";
 
 import {
   Agent,
   type GeminiModelId,
+  type OpenRouterModelId,
+  type BackendProvider,
   type AIMessage,
   type FileOperation,
   DEFAULT_GEMINI_MODEL,
+  DEFAULT_OPENROUTER_MODEL,
   GEMINI_MODEL_OPTIONS,
+  OPENROUTER_MODEL_OPTIONS,
   type Message,
   CompositeToolSet,
   CodalynToolSet,
@@ -28,6 +33,7 @@ import {
   Context7ToolSet,
   WebContainerSandbox,
   GeminiAdapter,
+  OpenRouterAdapter,
   ConversationMemory,
   getDefaultSystemPrompt,
   extractFileOperations,
@@ -37,17 +43,24 @@ import {
   StoredProject,
   applyFileOperationsToProject,
   clearStoredGeminiKey,
+  clearStoredOpenRouterKey,
   clearStoredContext7Key,
   getActiveProjectId,
   getProjectById,
   getPreferredGeminiModel,
+  getPreferredOpenRouterModel,
+  getPreferredBackend,
   getStoredGeminiKey,
+  getStoredOpenRouterKey,
   getStoredContext7Key,
   listProjects,
   markProjectOpened,
   setActiveProjectId,
   setPreferredGeminiModel,
+  setPreferredOpenRouterModel,
+  setPreferredBackend,
   setStoredGeminiKey,
+  setStoredOpenRouterKey,
   setStoredContext7Key,
 } from "@/lib/project-storage";
 import { WebContainerManager } from "@/lib/webcontainer-manager";
@@ -86,9 +99,12 @@ export default function BuilderPage() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [backend, setBackend] = useState<BackendProvider>("gemini");
   const [geminiApiKey, setGeminiApiKey] = useState("");
+  const [openRouterApiKey, setOpenRouterApiKey] = useState("");
   const [context7ApiKey, setContext7ApiKey] = useState("");
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
+  const [openRouterApiKeyError, setOpenRouterApiKeyError] = useState<string | null>(null);
   const [context7ApiKeyError, setContext7ApiKeyError] = useState<string | null>(null);
   const [isGeminiReady, setIsGeminiReady] = useState(false);
   const [isCheckingKey, setIsCheckingKey] = useState(true);
@@ -98,7 +114,7 @@ export default function BuilderPage() {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [activeProject, setActiveProject] = useState<StoredProject | null>(null);
   const [projectError, setProjectError] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState<GeminiModelId>(
+  const [selectedModel, setSelectedModel] = useState<GeminiModelId | OpenRouterModelId>(
     DEFAULT_GEMINI_MODEL
   );
   const [showScreenshotTip, setShowScreenshotTip] = useState(false);
@@ -195,31 +211,52 @@ export default function BuilderPage() {
   }, [activeProject, isInitializing]);
 
   useEffect(() => {
-    const preferredModel = getPreferredGeminiModel() ?? DEFAULT_GEMINI_MODEL;
-    setSelectedModel(preferredModel);
-    const storedKey = getStoredGeminiKey();
-    const storedContext7Key = getStoredContext7Key();
-    if (storedKey) {
-      connectGeminiClient(storedKey, preferredModel, true, storedContext7Key);
-      setGeminiApiKey(storedKey);
+    const preferredBackend = getPreferredBackend() ?? "gemini";
+    setBackend(preferredBackend);
+    
+    if (preferredBackend === "openrouter") {
+      const preferredModel = getPreferredOpenRouterModel() ?? DEFAULT_OPENROUTER_MODEL;
+      setSelectedModel(preferredModel);
+      const storedKey = getStoredOpenRouterKey();
+      const storedContext7Key = getStoredContext7Key();
+      if (storedKey) {
+        connectClient(preferredBackend, storedKey, preferredModel, true, storedContext7Key);
+        setOpenRouterApiKey(storedKey);
+      } else {
+        setIsKeyModalOpen(true);
+      }
+      if (storedContext7Key) {
+        setContext7ApiKey(storedContext7Key);
+      }
     } else {
-      setIsKeyModalOpen(true);
-    }
-    if (storedContext7Key) {
-      setContext7ApiKey(storedContext7Key);
+      const preferredModel = getPreferredGeminiModel() ?? DEFAULT_GEMINI_MODEL;
+      setSelectedModel(preferredModel);
+      const storedKey = getStoredGeminiKey();
+      const storedContext7Key = getStoredContext7Key();
+      if (storedKey) {
+        connectClient(preferredBackend, storedKey, preferredModel, true, storedContext7Key);
+        setGeminiApiKey(storedKey);
+      } else {
+        setIsKeyModalOpen(true);
+      }
+      if (storedContext7Key) {
+        setContext7ApiKey(storedContext7Key);
+      }
     }
     setIsCheckingKey(false);
   }, []);
 
-  const connectGeminiClient = (
+  const connectClient = (
+    backendProvider: BackendProvider,
     apiKey: string,
-    model: GeminiModelId,
+    model: GeminiModelId | OpenRouterModelId,
     resetMessages = false,
     context7ApiKey?: string | null
   ) => {
-    // Initialize vector store if needed
+    // Initialize vector store if needed (use Gemini key for vector store, or a fallback)
     if (!vectorStoreRef.current) {
-      vectorStoreRef.current = new VectorStore(apiKey);
+      const vectorStoreKey = backendProvider === "gemini" ? apiKey : (getStoredGeminiKey() || apiKey);
+      vectorStoreRef.current = new VectorStore(vectorStoreKey);
     }
 
     // Create sandbox
@@ -250,11 +287,16 @@ export default function BuilderPage() {
     // Create memory with system prompt
     const memory = new ConversationMemory(getDefaultSystemPrompt());
 
-    // Create adapter
-    const adapter = new GeminiAdapter({
-      apiKey,
-      modelName: model,
-    });
+    // Create adapter based on backend
+    const adapter = backendProvider === "openrouter"
+      ? new OpenRouterAdapter({
+          apiKey,
+          modelName: model as OpenRouterModelId,
+        })
+      : new GeminiAdapter({
+          apiKey,
+          modelName: model as GeminiModelId,
+        });
 
     // Create agent
     agentRef.current = new Agent({
@@ -306,55 +348,119 @@ export default function BuilderPage() {
   }, [statusMessage]);
 
   const handleApiKeySubmit = () => {
-    const trimmed = geminiApiKey.trim();
-    if (!trimmed) {
-      setApiKeyError("Enter your Gemini API key to continue.");
-      return;
-    }
-    if (!trimmed.startsWith("AI") && !trimmed.startsWith("AIza")) {
-      setApiKeyError("That doesn't look like a Gemini API key.");
-      return;
+    // Validate backend-specific API key
+    if (backend === "gemini") {
+      const trimmed = geminiApiKey.trim();
+      if (!trimmed) {
+        setApiKeyError("Enter your Gemini API key to continue.");
+        return;
+      }
+      if (!trimmed.startsWith("AI") && !trimmed.startsWith("AIza")) {
+        setApiKeyError("That doesn't look like a Gemini API key.");
+        return;
+      }
+      setStoredGeminiKey(trimmed);
+      setPreferredBackend("gemini");
+      const model = selectedModel as GeminiModelId;
+      setPreferredGeminiModel(model);
+      connectClient("gemini", trimmed, model, true, context7ApiKey.trim() || null);
+    } else {
+      const trimmed = openRouterApiKey.trim();
+      if (!trimmed) {
+        setOpenRouterApiKeyError("Enter your OpenRouter API key to continue.");
+        return;
+      }
+      // OpenRouter keys typically start with "sk-or-" but we'll accept any non-empty string
+      setStoredOpenRouterKey(trimmed);
+      setPreferredBackend("openrouter");
+      const model = selectedModel as OpenRouterModelId;
+      setPreferredOpenRouterModel(model);
+      connectClient("openrouter", trimmed, model, true, context7ApiKey.trim() || null);
     }
 
     // Validate Context7 key if provided (optional)
     const trimmedContext7 = context7ApiKey.trim();
     if (trimmedContext7) {
-      // Context7 keys are typically alphanumeric, but we'll accept any non-empty string
       setStoredContext7Key(trimmedContext7);
     } else {
       clearStoredContext7Key();
     }
 
-    setStoredGeminiKey(trimmed);
-    connectGeminiClient(trimmed, selectedModel, true, trimmedContext7 || null);
     setIsKeyModalOpen(false);
     setApiKeyError(null);
+    setOpenRouterApiKeyError(null);
     setContext7ApiKeyError(null);
     setStatusMessage("API keys saved privately in this browser.");
   };
 
   const handleClearApiKey = () => {
     clearStoredGeminiKey();
+    clearStoredOpenRouterKey();
     clearStoredContext7Key();
     agentRef.current = null;
     setIsGeminiReady(false);
     setIsKeyModalOpen(true);
     setGeminiApiKey("");
+    setOpenRouterApiKey("");
     setContext7ApiKey("");
     setMessages([]);
   };
 
-  const handleModelChange = (nextModel: GeminiModelId) => {
+  const handleModelChange = (nextModel: GeminiModelId | OpenRouterModelId) => {
     setSelectedModel(nextModel);
-    setPreferredGeminiModel(nextModel);
-    const storedKey = getStoredGeminiKey();
-    const storedContext7Key = getStoredContext7Key();
-    if (storedKey) {
-      connectGeminiClient(storedKey, nextModel, false, storedContext7Key);
-      const label =
-        GEMINI_MODEL_OPTIONS.find((option) => option.id === nextModel)?.label ??
-        nextModel;
-      setStatusMessage(`${label} is ready for the next prompt.`);
+    const currentBackend = backend;
+    
+    if (currentBackend === "openrouter") {
+      setPreferredOpenRouterModel(nextModel as OpenRouterModelId);
+      const storedKey = getStoredOpenRouterKey();
+      const storedContext7Key = getStoredContext7Key();
+      if (storedKey) {
+        connectClient("openrouter", storedKey, nextModel as OpenRouterModelId, false, storedContext7Key);
+        const label =
+          OPENROUTER_MODEL_OPTIONS.find((option) => option.id === nextModel)?.label ??
+          nextModel;
+        setStatusMessage(`${label} is ready for the next prompt.`);
+      }
+    } else {
+      setPreferredGeminiModel(nextModel as GeminiModelId);
+      const storedKey = getStoredGeminiKey();
+      const storedContext7Key = getStoredContext7Key();
+      if (storedKey) {
+        connectClient("gemini", storedKey, nextModel as GeminiModelId, false, storedContext7Key);
+        const label =
+          GEMINI_MODEL_OPTIONS.find((option) => option.id === nextModel)?.label ??
+          nextModel;
+        setStatusMessage(`${label} is ready for the next prompt.`);
+      }
+    }
+  };
+
+  const handleBackendChange = (newBackend: BackendProvider) => {
+    setBackend(newBackend);
+    setPreferredBackend(newBackend);
+    
+    if (newBackend === "openrouter") {
+      const preferredModel = getPreferredOpenRouterModel() ?? DEFAULT_OPENROUTER_MODEL;
+      setSelectedModel(preferredModel);
+      const storedKey = getStoredOpenRouterKey();
+      const storedContext7Key = getStoredContext7Key();
+      if (storedKey) {
+        connectClient("openrouter", storedKey, preferredModel, false, storedContext7Key);
+        setOpenRouterApiKey(storedKey);
+      } else {
+        setOpenRouterApiKey("");
+      }
+    } else {
+      const preferredModel = getPreferredGeminiModel() ?? DEFAULT_GEMINI_MODEL;
+      setSelectedModel(preferredModel);
+      const storedKey = getStoredGeminiKey();
+      const storedContext7Key = getStoredContext7Key();
+      if (storedKey) {
+        connectClient("gemini", storedKey, preferredModel, false, storedContext7Key);
+        setGeminiApiKey(storedKey);
+      } else {
+        setGeminiApiKey("");
+      }
     }
   };
 
@@ -406,30 +512,36 @@ export default function BuilderPage() {
       return;
     }
 
-    const userMessage = input.trim();
-    setInput("");
-    setIsLoading(true);
+      const userMessage = input.trim();
+      setInput("");
+      setIsLoading(true);
 
-    try {
-      const userMsg: AIMessage = { role: "user", content: userMessage };
-      const history = [...messages, userMsg];
-      setMessages([...history, { role: "assistant", content: "" }]);
+      try {
+        const userMsg: AIMessage = { role: "user", content: userMessage };
+        const history = [...messages, userMsg];
+        // Create initial assistant message for the first phase
+        setMessages([...history, { role: "assistant", content: "" }]);
 
-      // Restore conversation history to agent memory
-      // The agent's runStream will add the user message, so we restore previous messages only
-      agentRef.current.reset();
-      const agentMemory = (agentRef.current as any).config.memory;
-      // Restore all previous messages (excluding the new user message which runStream will add)
-      const historyMessages = convertAIMessagesToMessages(messages);
-      for (const msg of historyMessages) {
-        agentMemory.addMessage(msg);
-      }
+        // Restore conversation history to agent memory
+        // The agent's runStream will add the user message, so we restore previous messages only
+        agentRef.current.reset();
+        const agentMemory = (agentRef.current as any).config.memory;
+        // Restore all previous messages (excluding the new user message which runStream will add)
+        const historyMessages = convertAIMessagesToMessages(messages);
+        for (const msg of historyMessages) {
+          agentMemory.addMessage(msg);
+        }
 
-      let fullResponse = "";
-      let operations: FileOperation[] = [];
-      let capturedScreenshot: string | undefined = undefined;
-      const toolCalls: any[] = [];
-      const toolResults: any[] = [];
+        let fullResponse = "";
+        let operations: FileOperation[] = []; // Accumulate all operations across all phases
+        let capturedScreenshot: string | undefined = undefined;
+        const toolCalls: any[] = []; // Current phase's tool calls
+        const toolResults: any[] = []; // Current phase's tool results
+        const allToolCalls: any[] = []; // Accumulate all tool calls across all phases
+        const allToolResults: any[] = []; // Accumulate all tool results across all phases
+        let currentIteration = 0;
+        // Initialize to point to the assistant message we just created (last message in array)
+        let currentPhaseMessageIndex = history.length; // Index of the assistant message we just added
 
       // Helper function to update message with current operations (for real-time display)
       const updateMessageWithOperations = () => {
@@ -438,12 +550,13 @@ export default function BuilderPage() {
         const currentOps = extractFileOperations(toolCalls, toolResults);
         setMessages((prev) => {
           const next = [...prev];
-          const lastMsg = next[next.length - 1];
-          if (lastMsg) {
-            next[next.length - 1] = {
-              ...lastMsg,
+          // Update the current phase's message
+          if (currentPhaseMessageIndex >= 0 && currentPhaseMessageIndex < next.length) {
+            const phaseMsg = next[currentPhaseMessageIndex];
+            next[currentPhaseMessageIndex] = {
+              ...phaseMsg,
               content: fullResponse,
-              screenshot: capturedScreenshot || lastMsg.screenshot,
+              screenshot: capturedScreenshot || phaseMsg.screenshot,
               operations: currentOps.length > 0 ? currentOps : undefined,
             };
           }
@@ -453,23 +566,62 @@ export default function BuilderPage() {
 
       // Process agent stream
       for await (const event of agentRef.current.runStream(userMessage)) {
-        if (event.type === "thought") {
+        if (event.type === "iteration") {
+          // New iteration/phase starting
+          const newIteration = event.iteration;
+          
+          // If this is a new iteration (not the first), finalize previous phase and create new message
+          if (newIteration > currentIteration && currentIteration > 0) {
+            // Save previous phase's operations before starting new phase
+            const previousPhaseOps = extractFileOperations(toolCalls, toolResults);
+            const validatedPreviousPhaseOps = filterValidFileOperations(previousPhaseOps);
+            
+            // Finalize previous phase's message with its operations
+            setMessages((prev) => {
+              const next = [...prev];
+              if (currentPhaseMessageIndex >= 0 && currentPhaseMessageIndex < next.length) {
+                const phaseMsg = next[currentPhaseMessageIndex];
+                next[currentPhaseMessageIndex] = {
+                  ...phaseMsg,
+                  operations: validatedPreviousPhaseOps.length > 0 ? validatedPreviousPhaseOps : undefined,
+                };
+              }
+              // Create a new assistant message for this new phase
+              next.push({ role: "assistant", content: "" });
+              currentPhaseMessageIndex = next.length - 1;
+              return next;
+            });
+          } else {
+            // First iteration - use the message we already created
+            setMessages((prev) => {
+              currentPhaseMessageIndex = prev.length - 1;
+              return prev;
+            });
+          }
+          
+          currentIteration = newIteration;
+          // Reset response and operations for new phase (but keep them accumulated in allToolCalls/allToolResults)
+          fullResponse = "";
+          toolCalls.length = 0;
+          toolResults.length = 0;
+        } else if (event.type === "thought") {
           fullResponse += event.content;
           setMessages((prev) => {
             const next = [...prev];
-            const lastMsg = next[next.length - 1];
-            if (lastMsg) {
-              next[next.length - 1] = {
-                ...lastMsg,
+            if (currentPhaseMessageIndex >= 0 && currentPhaseMessageIndex < next.length) {
+              const phaseMsg = next[currentPhaseMessageIndex];
+              next[currentPhaseMessageIndex] = {
+                ...phaseMsg,
                 content: fullResponse,
-                screenshot: capturedScreenshot || lastMsg.screenshot,
-                operations: lastMsg.operations, // Preserve existing operations
+                screenshot: capturedScreenshot || phaseMsg.screenshot,
+                operations: phaseMsg.operations, // Preserve existing operations
               };
             }
             return next;
           });
         } else if (event.type === "tool_call") {
           toolCalls.push(event.toolCall);
+          allToolCalls.push(event.toolCall);
           // Show tip when AI requests a screenshot
           if (event.toolCall.name === "capture_screenshot") {
             setShowScreenshotTip(true);
@@ -478,6 +630,7 @@ export default function BuilderPage() {
           updateMessageWithOperations();
         } else if (event.type === "tool_result") {
           toolResults.push(event.toolResult);
+          allToolResults.push(event.toolResult);
           
           // Handle screenshot capture
           if (event.toolResult.name === "capture_screenshot" && event.toolResult.success) {
@@ -487,12 +640,12 @@ export default function BuilderPage() {
               setShowScreenshotTip(false);
               setMessages((prev) => {
                 const next = [...prev];
-                const lastMsg = next[next.length - 1];
-                if (lastMsg) {
-                  next[next.length - 1] = { 
-                    ...lastMsg, 
+                if (currentPhaseMessageIndex >= 0 && currentPhaseMessageIndex < next.length) {
+                  const phaseMsg = next[currentPhaseMessageIndex];
+                  next[currentPhaseMessageIndex] = { 
+                    ...phaseMsg, 
                     screenshot,
-                    operations: lastMsg.operations, // Preserve operations
+                    operations: phaseMsg.operations, // Preserve operations
                   };
                 }
                 return next;
@@ -505,33 +658,37 @@ export default function BuilderPage() {
           fullResponse = event.content;
           setMessages((prev) => {
             const next = [...prev];
-            const lastMsg = next[next.length - 1];
-            if (lastMsg) {
-              next[next.length - 1] = {
-                ...lastMsg,
+            if (currentPhaseMessageIndex >= 0 && currentPhaseMessageIndex < next.length) {
+              const phaseMsg = next[currentPhaseMessageIndex];
+              next[currentPhaseMessageIndex] = {
+                ...phaseMsg,
                 content: fullResponse,
-                screenshot: capturedScreenshot || lastMsg.screenshot,
-                operations: lastMsg.operations, // Preserve existing operations
+                screenshot: capturedScreenshot || phaseMsg.screenshot,
+                operations: phaseMsg.operations, // Preserve existing operations
               };
             }
             return next;
           });
         } else if (event.type === "done") {
-          // Extract file operations from tool calls and results using improved parser
-          const extractedOps = extractFileOperations(toolCalls, toolResults);
-          operations = filterValidFileOperations(extractedOps);
-          // Final update with validated operations
+          // Extract file operations from current phase's tool calls and results
+          const currentPhaseOps = extractFileOperations(toolCalls, toolResults);
+          const validatedCurrentPhaseOps = filterValidFileOperations(currentPhaseOps);
+          
+          // Update current phase message with its operations
           setMessages((prev) => {
             const next = [...prev];
-            const lastMsg = next[next.length - 1];
-            if (lastMsg) {
-              next[next.length - 1] = {
-                ...lastMsg,
-                operations: operations.length > 0 ? operations : undefined,
+            if (currentPhaseMessageIndex >= 0 && currentPhaseMessageIndex < next.length) {
+              const phaseMsg = next[currentPhaseMessageIndex];
+              next[currentPhaseMessageIndex] = {
+                ...phaseMsg,
+                operations: validatedCurrentPhaseOps.length > 0 ? validatedCurrentPhaseOps : undefined,
               };
             }
             return next;
           });
+          
+          // Accumulate all operations from all phases for final processing
+          operations = filterValidFileOperations(extractFileOperations(allToolCalls, allToolResults));
         }
       }
 
@@ -677,7 +834,7 @@ export default function BuilderPage() {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.4em] text-primary">
-            Gemini access
+            AI Backend access
           </p>
           <h1 className="mt-2 text-3xl font-semibold text-card-foreground">Bring your own API key</h1>
         </div>
@@ -704,31 +861,108 @@ export default function BuilderPage() {
       >
         <div className="space-y-2">
           <label className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
-            Gemini API key <span className="text-destructive">*</span>
+            Backend Provider <span className="text-destructive">*</span>
           </label>
-          <input
-            type="password"
-            value={geminiApiKey}
+          <select
+            value={backend}
             onChange={(event) => {
-              setGeminiApiKey(event.target.value);
+              handleBackendChange(event.target.value as BackendProvider);
               setApiKeyError(null);
+              setOpenRouterApiKeyError(null);
             }}
-            placeholder="AIza..."
             className="w-full rounded-lg border border-border bg-input px-4 py-3 text-base text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-          />
-          {apiKeyError && <p className="text-sm text-destructive">{apiKeyError}</p>}
+          >
+            <option value="gemini">Google Gemini</option>
+            <option value="openrouter">OpenRouter</option>
+          </select>
           <p className="text-xs text-muted-foreground">
-            Grab a key in seconds at {" "}
-            <a
-              href="https://makersuite.google.com/app/apikey"
-              target="_blank"
-              rel="noreferrer"
-              className="font-medium text-primary hover:underline"
-            >
-              Google AI Studio
-            </a>
-            .
+            Choose your AI backend provider.
           </p>
+        </div>
+
+        {backend === "gemini" ? (
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
+              Gemini API key <span className="text-destructive">*</span>
+            </label>
+            <input
+              type="password"
+              value={geminiApiKey}
+              onChange={(event) => {
+                setGeminiApiKey(event.target.value);
+                setApiKeyError(null);
+              }}
+              placeholder="AIza..."
+              className="w-full rounded-lg border border-border bg-input px-4 py-3 text-base text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+            />
+            {apiKeyError && <p className="text-sm text-destructive">{apiKeyError}</p>}
+            <p className="text-xs text-muted-foreground">
+              Grab a key in seconds at {" "}
+              <a
+                href="https://makersuite.google.com/app/apikey"
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium text-primary hover:underline"
+              >
+                Google AI Studio
+              </a>
+              .
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
+              OpenRouter API key <span className="text-destructive">*</span>
+            </label>
+            <input
+              type="password"
+              value={openRouterApiKey}
+              onChange={(event) => {
+                setOpenRouterApiKey(event.target.value);
+                setOpenRouterApiKeyError(null);
+              }}
+              placeholder="sk-or-..."
+              className="w-full rounded-lg border border-border bg-input px-4 py-3 text-base text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+            />
+            {openRouterApiKeyError && <p className="text-sm text-destructive">{openRouterApiKeyError}</p>}
+            <p className="text-xs text-muted-foreground">
+              Get your key at {" "}
+              <a
+                href="https://openrouter.ai/keys"
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium text-primary hover:underline"
+              >
+                OpenRouter Dashboard
+              </a>
+              .
+            </p>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <label className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
+            Model
+          </label>
+          <select
+            value={selectedModel}
+            onChange={(event) => {
+              handleModelChange(event.target.value as GeminiModelId | OpenRouterModelId);
+            }}
+            className="w-full rounded-lg border border-border bg-input px-4 py-3 text-base text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          >
+            {backend === "openrouter"
+              ? OPENROUTER_MODEL_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))
+              : GEMINI_MODEL_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+          </select>
         </div>
 
         <div className="space-y-2">
@@ -764,7 +998,7 @@ export default function BuilderPage() {
           type="submit"
           className="flex w-full items-center justify-center rounded-lg bg-primary px-4 py-3 font-semibold text-primary-foreground transition hover:opacity-90"
         >
-          Continue with Gemini
+          Continue with {backend === "gemini" ? "Gemini" : "OpenRouter"}
         </button>
 
         {mode === "modal" && (
@@ -814,8 +1048,8 @@ export default function BuilderPage() {
       <header className="flex items-center justify-between border-b border-border bg-background px-4 py-2">
         <div className="flex items-center gap-3">
           <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg overflow-hidden">
-              <img src="/logo.png" alt="Codalyn" className="h-24 w-24 object-contain p-1" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg overflow-hidden">
+              <SpinningLogo className="h-full w-full" />
             </div>
             <span className="text-sm font-semibold text-foreground">CODALYN Builder</span>
           </Link>
@@ -836,15 +1070,21 @@ export default function BuilderPage() {
             <select
               value={selectedModel}
               onChange={(event) =>
-                handleModelChange(event.target.value as GeminiModelId)
+                handleModelChange(event.target.value as GeminiModelId | OpenRouterModelId)
               }
               className="w-40 appearance-none rounded border border-border bg-input px-3 py-1.5 pr-7 text-xs text-foreground focus:border-primary focus:outline-none"
             >
-              {GEMINI_MODEL_OPTIONS.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
+              {backend === "openrouter"
+                ? OPENROUTER_MODEL_OPTIONS.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))
+                : GEMINI_MODEL_OPTIONS.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
             </select>
             <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
           </div>
@@ -854,9 +1094,15 @@ export default function BuilderPage() {
           </div>
           <button
             onClick={() => {
-              setGeminiApiKey(getStoredGeminiKey() ?? "");
+              const currentBackend = backend;
+              if (currentBackend === "openrouter") {
+                setOpenRouterApiKey(getStoredOpenRouterKey() ?? "");
+              } else {
+                setGeminiApiKey(getStoredGeminiKey() ?? "");
+              }
               setContext7ApiKey(getStoredContext7Key() ?? "");
               setApiKeyError(null);
+              setOpenRouterApiKeyError(null);
               setContext7ApiKeyError(null);
               setIsKeyModalOpen(true);
             }}

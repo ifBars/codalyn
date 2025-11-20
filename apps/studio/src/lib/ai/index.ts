@@ -24,6 +24,8 @@ export { ConversationMemory } from "./core/memory";
 // Providers
 export { GeminiAdapter } from "./providers/gemini";
 export type { GeminiAdapterConfig } from "./providers/gemini";
+export { OpenRouterAdapter } from "./providers/openrouter";
+export type { OpenRouterAdapterConfig } from "./providers/openrouter";
 
 // Tools
 export { CodalynToolSet } from "./tools/index";
@@ -43,23 +45,33 @@ export { WebContainerSandbox } from "./sandbox/webcontainer-sandbox";
  */
 import { Agent } from "./core/agent";
 import { GeminiAdapter } from "./providers/gemini";
+import { OpenRouterAdapter } from "./providers/openrouter";
 import { CodalynToolSet } from "./tools/index";
 import { ConversationMemory } from "./core/memory";
 import type { SandboxInterface } from "@codalyn/sandbox";
+import type { BackendProvider } from "./core/types";
 
 export interface CreateAgentOptions {
     apiKey: string;
     modelName?: string;
+    backend?: BackendProvider;
     sandbox: SandboxInterface;
     systemPrompt?: string;
     maxIterations?: number;
 }
 
 export function createAgent(options: CreateAgentOptions): Agent {
-    const adapter = new GeminiAdapter({
-        apiKey: options.apiKey,
-        modelName: options.modelName,
-    });
+    const backend = options.backend || "gemini";
+    
+    const adapter = backend === "openrouter"
+        ? new OpenRouterAdapter({
+            apiKey: options.apiKey,
+            modelName: options.modelName,
+        })
+        : new GeminiAdapter({
+            apiKey: options.apiKey,
+            modelName: options.modelName,
+        });
 
     const toolSet = new CodalynToolSet(options.sandbox);
     const memory = new ConversationMemory(options.systemPrompt);

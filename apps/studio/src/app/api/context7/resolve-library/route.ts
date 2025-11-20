@@ -4,21 +4,18 @@ import { NextRequest, NextResponse } from "next/server";
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+const CONTEXT7_API_BASE = "https://context7.com/api";
+
 /**
  * API route to resolve a library name to Context7-compatible library ID
  * 
- * This endpoint is a proxy that calls Context7's MCP tools.
- * Since MCP tools are not directly accessible from Next.js API routes,
- * this endpoint returns a helpful response structure.
- * 
- * The actual resolution should happen via MCP tools when the toolset
- * runs in an environment that supports them (like server actions).
+ * This endpoint proxies requests to Context7's REST API search endpoint.
  */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const libraryName = searchParams.get("libraryName");
-    const apiKey = request.headers.get("x-context7-api-key");
+    const apiKey = request.headers.get("x-context7-api-key") || request.headers.get("authorization")?.replace("Bearer ", "");
 
     if (!libraryName) {
       return NextResponse.json(
@@ -27,40 +24,51 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Note: Context7 MCP tools don't require API key authentication
-    // The API key parameter is kept for compatibility but not used
-
-    // Since this is running in a Next.js API route and MCP tools
-    // are only available in the Cursor environment, we return a response
-    // that indicates the library name should be resolved via MCP tools.
-    // The toolset should handle this appropriately.
-    
-    // Return a response that matches the MCP tool's expected format
-    // Since MCP tools aren't directly callable from API routes, we provide
-    // a helpful response that the toolset can use
-    const normalizedName = libraryName.toLowerCase();
-    
-    // Provide common mappings for known libraries
-    let suggestedLibraryId: string | null = null;
-    if (normalizedName.includes('genai') || normalizedName.includes('js-genai')) {
-      suggestedLibraryId = "/googleapis/js-genai";
-    } else if (normalizedName.includes('next') || normalizedName === 'next.js') {
-      suggestedLibraryId = "/vercel/next.js";
-    } else if (normalizedName === 'react') {
-      suggestedLibraryId = "/facebook/react";
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "API key is required. Provide it via x-context7-api-key header or Authorization header." },
+        { status: 401 }
+      );
     }
+
+    // Call Context7 search API
+    // See: https://context7.com/docs/api-reference/search/search-libraries
+    const searchUrl = `${CONTEXT7_API_BASE}/v1/search/libraries?query=${encodeURIComponent(libraryName)}`;
+    const response = await fetch(searchUrl, {
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      return NextResponse.json(
+        {
+          error: errorData.error || `HTTP ${response.status}: ${response.statusText}`,
+          status: response.status,
+        },
+        { status: response.status }
+      );
+    }
+
+    const data = await response.json();
     
+    // Transform the response to match expected format
+    const libraries = (data.results || []).map((lib: any) => ({
+      libraryId: lib.id,
+      name: lib.title || lib.id,
+      description: lib.description || "",
+      stars: lib.stars,
+      trustScore: lib.trustScore,
+      benchmarkScore: lib.benchmarkScore,
+      versions: lib.versions || [],
+    }));
+
     return NextResponse.json({
       libraryName,
-      // Return format similar to MCP tool response
-      libraries: suggestedLibraryId ? [{
-        libraryId: suggestedLibraryId,
-        name: libraryName,
-        description: `Suggested library ID for ${libraryName}`,
-      }] : [],
-      message: suggestedLibraryId 
-        ? `Found suggested library ID: ${suggestedLibraryId}`
-        : `No direct mapping found for '${libraryName}'. Try using format '/org/project' or search Context7 for similar libraries.`,
+      libraries,
+      metadata: data.metadata,
     });
   } catch (error) {
     console.error("[Context7 API] Error in resolve request:", error);

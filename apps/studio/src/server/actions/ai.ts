@@ -5,7 +5,7 @@
  */
 
 import { getUser } from "@/lib/auth";
-import { createAgent, AgentEvent, ConversationMemory, getDefaultSystemPrompt } from "@/lib/ai";
+import { createAgent, AgentEvent, ConversationMemory, getDefaultSystemPrompt, type BackendProvider } from "@/lib/ai";
 import { SandboxManager } from "@codalyn/sandbox";
 import { db } from "@/lib/db";
 import { aiSessions, toolLogs } from "@/lib/db/schema";
@@ -13,6 +13,28 @@ import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 const sandboxManager = new SandboxManager();
+
+// Helper to get API key and backend from environment or defaults
+function getBackendConfig(): { backend: BackendProvider; apiKey: string; modelName: string } {
+  // Check for OpenRouter first, then fall back to Gemini
+  if (process.env.OPENROUTER_API_KEY) {
+    return {
+      backend: "openrouter",
+      apiKey: process.env.OPENROUTER_API_KEY,
+      modelName: process.env.OPENROUTER_MODEL || "openrouter/auto",
+    };
+  }
+  
+  if (process.env.GEMINI_API_KEY) {
+    return {
+      backend: "gemini",
+      apiKey: process.env.GEMINI_API_KEY,
+      modelName: process.env.GEMINI_MODEL || "gemini-2.0-flash-exp",
+    };
+  }
+  
+  throw new Error("Neither OPENROUTER_API_KEY nor GEMINI_API_KEY is configured");
+}
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -49,9 +71,7 @@ export async function chatWithAI(
   const user = await getUser();
   if (!user) throw new Error("Unauthorized");
 
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error("GEMINI_API_KEY is not configured");
-  }
+  const backendConfig = getBackendConfig();
 
   // Get or create sandbox for project
   // Use mock sandbox for server-side execution (WebContainers only work in browser)
@@ -85,9 +105,11 @@ export async function chatWithAI(
 
   // Create agent
   console.log("[AI Debug] Creating agent...");
+  console.log(`[AI Debug] Using backend: ${backendConfig.backend}`);
   const agent = createAgent({
-    apiKey: process.env.GEMINI_API_KEY,
-    modelName: "gemini-2.0-flash-exp",
+    apiKey: backendConfig.apiKey,
+    modelName: backendConfig.modelName,
+    backend: backendConfig.backend,
     sandbox,
     systemPrompt,
     maxIterations: 10,
@@ -158,9 +180,7 @@ export async function* streamChatWithAI(
   const user = await getUser();
   if (!user) throw new Error("Unauthorized");
 
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error("GEMINI_API_KEY is not configured");
-  }
+  const backendConfig = getBackendConfig();
 
   // Use mock sandbox for server-side execution (WebContainers only work in browser)
   console.log("[AI Debug] Creating sandbox...");
@@ -182,9 +202,11 @@ export async function* streamChatWithAI(
 
   // Create agent
   console.log("[AI Debug] Creating agent...");
+  console.log(`[AI Debug] Using backend: ${backendConfig.backend}`);
   const agent = createAgent({
-    apiKey: process.env.GEMINI_API_KEY,
-    modelName: "gemini-2.0-flash-exp",
+    apiKey: backendConfig.apiKey,
+    modelName: backendConfig.modelName,
+    backend: backendConfig.backend,
     sandbox,
     systemPrompt,
     maxIterations: 10,

@@ -4,24 +4,22 @@ import { NextRequest, NextResponse } from "next/server";
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+const CONTEXT7_API_BASE = "https://context7.com/api";
+
 /**
  * API route to get library documentation from Context7
  * 
- * This endpoint proxies requests to Context7's MCP tools.
- * Since MCP tools are not directly accessible from Next.js API routes,
- * this endpoint returns a helpful error message.
- * 
- * The actual documentation fetching should happen via MCP tools when
- * the toolset runs in an environment that supports them.
+ * This endpoint proxies requests to Context7's REST API.
  */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const library = searchParams.get("library");
     const topic = searchParams.get("topic");
-    const tokens = searchParams.get("tokens");
+    const tokens = searchParams.get("tokens") || "10000";
     const version = searchParams.get("version");
-    const apiKey = request.headers.get("x-context7-api-key");
+    const apiKey = request.headers.get("x-context7-api-key") || request.headers.get("authorization")?.replace("Bearer ", "");
+    const type = searchParams.get("type") || "txt"; // txt or json
 
     if (!library) {
       return NextResponse.json(
@@ -30,22 +28,67 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Note: Context7 MCP tools don't require API key authentication
-    // The API key parameter is kept for compatibility but not used
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "API key is required. Provide it via x-context7-api-key header or Authorization header." },
+        { status: 401 }
+      );
+    }
 
-    // Since this is running in a Next.js API route and MCP tools
-    // are only available in the Cursor environment, we return an error
-    // indicating that MCP tools should be used directly.
+    // Normalize library ID format (ensure it starts with /)
+    let libraryId = library.startsWith("/") ? library : `/${library}`;
     
-    return NextResponse.json(
-      {
-        error: "Context7 MCP tools must be called directly, not through API routes",
-        library,
-        topic,
-        suggestion: "Use MCP tools directly when available, or ensure the library ID is in format '/org/project'",
+    // Build the API URL
+    // Format: /v1/{owner}/{repo} or /v1/{owner}/{repo}/{version}
+    let apiUrl = `${CONTEXT7_API_BASE}/v1${libraryId}`;
+    if (version) {
+      apiUrl += `/${version}`;
+    }
+
+    // Build query parameters
+    const queryParams = new URLSearchParams();
+    queryParams.append("type", type);
+    if (topic) {
+      queryParams.append("topic", topic);
+    }
+    if (tokens) {
+      queryParams.append("tokens", tokens);
+    }
+    apiUrl += `?${queryParams.toString()}`;
+
+    // Call Context7 API
+    const response = await fetch(apiUrl, {
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
       },
-      { status: 400 }
-    );
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      return NextResponse.json(
+        {
+          error: errorData.error || `HTTP ${response.status}: ${response.statusText}`,
+          status: response.status,
+          retryAfterSeconds: errorData.retryAfterSeconds,
+        },
+        { status: response.status }
+      );
+    }
+
+    // Handle response based on type
+    if (type === "json") {
+      const data = await response.json();
+      return NextResponse.json(data);
+    } else {
+      // Plain text response
+      const text = await response.text();
+      return NextResponse.json({
+        library: libraryId,
+        content: text,
+        type: "txt",
+      });
+    }
   } catch (error) {
     console.error("[Context7 API] Error in get-docs request:", error);
     return NextResponse.json(

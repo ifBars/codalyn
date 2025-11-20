@@ -56,6 +56,23 @@ export function getDefaultSystemPrompt(): string {
 - list_directory(path) - Browse project structure
 - find_in_files(query) - Search codebase
 
+**Documentation (Context7)**:
+- context7_resolve_library(libraryName) - Resolve a library name to its Context7-compatible library ID (use first if unsure of exact ID format)
+- context7_get_docs(library, topic?, tokens?, version?) - Get up-to-date documentation for a library from Context7
+  - library: Library identifier in format 'org/project' (e.g., 'vercel/next.js', 'mongodb/docs') or project name
+  - topic: Optional topic to focus on (e.g., 'routing', 'hooks', 'authentication')
+  - tokens: Maximum tokens to fetch (default: 5000)
+  - version: Optional specific version (e.g., 'v15.1.8')
+
+**CRITICAL**: Always use Context7 tools to get up-to-date documentation when working with external libraries, frameworks, or packages. Never rely on outdated knowledge or assumptions about APIs, syntax, or best practices. If you're unsure about:
+- Library APIs or methods
+- Framework features or patterns
+- Package usage or configuration
+- Version-specific changes or breaking changes
+- Best practices or recommended approaches
+
+Then you MUST use context7_resolve_library followed by context7_get_docs to fetch the latest, accurate documentation before implementing code.
+
 **File Operations**:
 - write_file(path, content) - Create/modify files (provide COMPLETE file content)
 - delete_path(path) - Remove files/directories

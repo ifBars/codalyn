@@ -263,6 +263,85 @@ export function parseToolCalls(response: any): ToolCall[] {
     }
   }
 
+  // Handle OpenRouter/OpenAI format: choices[0].message.tool_calls or choices[0].delta.toolCalls
+  if (response.choices && Array.isArray(response.choices)) {
+    for (const choice of response.choices) {
+      // Check message.tool_calls (non-streaming)
+      const messageToolCalls = choice.message?.tool_calls || choice.message?.toolCalls;
+      if (messageToolCalls && Array.isArray(messageToolCalls)) {
+        for (const toolCall of messageToolCalls) {
+          if (toolCall.type === "function" && toolCall.function) {
+            try {
+              const args = typeof toolCall.function.arguments === "string"
+                ? JSON.parse(toolCall.function.arguments)
+                : toolCall.function.arguments || {};
+              
+              const normalized = normalizeToolCall({
+                id: toolCall.id,
+                name: toolCall.function.name,
+                args,
+              });
+              if (normalized) {
+                toolCalls.push(normalized);
+              }
+            } catch (e) {
+              console.warn(`[AI Debug] Failed to parse OpenRouter tool call arguments for ${toolCall.function.name}:`, e);
+            }
+          }
+        }
+      }
+      
+      // Check delta.tool_calls or delta.toolCalls (streaming)
+      const deltaToolCalls = choice.delta?.tool_calls || choice.delta?.toolCalls;
+      if (deltaToolCalls && Array.isArray(deltaToolCalls)) {
+        for (const toolCall of deltaToolCalls) {
+          if (toolCall.type === "function" && toolCall.function) {
+            try {
+              const args = typeof toolCall.function.arguments === "string"
+                ? JSON.parse(toolCall.function.arguments)
+                : toolCall.function.arguments || {};
+              
+              const normalized = normalizeToolCall({
+                id: toolCall.id,
+                name: toolCall.function.name,
+                args,
+              });
+              if (normalized) {
+                toolCalls.push(normalized);
+              }
+            } catch (e) {
+              console.warn(`[AI Debug] Failed to parse OpenRouter delta tool call arguments for ${toolCall.function.name}:`, e);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Handle direct message.tool_calls (OpenRouter format)
+  if (response.message?.tool_calls && Array.isArray(response.message.tool_calls)) {
+    for (const toolCall of response.message.tool_calls) {
+      if (toolCall.type === "function" && toolCall.function) {
+        try {
+          const args = typeof toolCall.function.arguments === "string"
+            ? JSON.parse(toolCall.function.arguments)
+            : toolCall.function.arguments || {};
+          
+          const normalized = normalizeToolCall({
+            id: toolCall.id,
+            name: toolCall.function.name,
+            args,
+          });
+          if (normalized) {
+            toolCalls.push(normalized);
+          }
+        } catch (e) {
+          console.warn(`[AI Debug] Failed to parse OpenRouter tool call arguments for ${toolCall.function.name}:`, e);
+        }
+      }
+    }
+  }
+
   return toolCalls;
 }
 

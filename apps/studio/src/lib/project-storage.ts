@@ -1,13 +1,16 @@
 "use client";
 
-import type { FileOperation, GeminiModelId } from "./ai";
+import type { FileOperation, GeminiModelId, OpenRouterModelId, BackendProvider } from "./ai";
 import { defaultProjectFileMap } from "./project-template";
 
 const PROJECTS_KEY = "codalyn.projects.v1";
 const GEMINI_KEY = "codalyn.geminiKey.v1";
+const OPENROUTER_KEY = "codalyn.openrouterKey.v1";
 const CONTEXT7_KEY = "codalyn.context7Key.v1";
 const ACTIVE_PROJECT_KEY = "codalyn.activeProject.v1";
 const GEMINI_MODEL_KEY = "codalyn.geminiModel.v1";
+const OPENROUTER_MODEL_KEY = "codalyn.openrouterModel.v1";
+const BACKEND_PROVIDER_KEY = "codalyn.backendProvider.v1";
 
 export interface StoredProject {
   id: string;
@@ -46,9 +49,15 @@ const removeStorage = (key: string) => {
 
 const cloneFiles = (files: Record<string, string>) => ({ ...files });
 
+// Deep clone a project to prevent reference sharing issues
+const cloneProject = (project: StoredProject): StoredProject => ({
+  ...project,
+  files: { ...project.files },
+});
+
 export const listProjects = (): StoredProject[] => {
   const projects = readStorage<StoredProject[]>(PROJECTS_KEY, []);
-  return [...projects].sort((a, b) =>
+  return projects.map(cloneProject).sort((a, b) =>
     new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   );
 };
@@ -59,7 +68,8 @@ const persistProjects = (projects: StoredProject[]) => {
 
 export const getProjectById = (id: string): StoredProject | null => {
   const projects = readStorage<StoredProject[]>(PROJECTS_KEY, []);
-  return projects.find((project) => project.id === id) ?? null;
+  const project = projects.find((project) => project.id === id);
+  return project ? cloneProject(project) : null;
 };
 
 export const setActiveProjectId = (id: string | null) => {
@@ -95,7 +105,7 @@ export const createProject = (input: {
   projects.unshift(project);
   persistProjects(projects);
   setActiveProjectId(project.id);
-  return project;
+  return cloneProject(project);
 };
 
 export const updateProject = (
@@ -114,7 +124,7 @@ export const updateProject = (
   };
   projects[index] = updated;
   persistProjects(projects);
-  return updated;
+  return cloneProject(updated);
 };
 
 export const deleteProject = (id: string) => {
@@ -140,7 +150,7 @@ export const markProjectOpened = (id: string): StoredProject | null => {
   projects[index] = updated;
   persistProjects(projects);
   setActiveProjectId(id);
-  return updated;
+  return cloneProject(updated);
 };
 
 export const applyFileOperationsToProject = (
@@ -153,7 +163,8 @@ export const applyFileOperationsToProject = (
   const index = projects.findIndex((project) => project.id === id);
   if (index === -1) return null;
 
-  const project = { ...projects[index], files: { ...projects[index].files } };
+  // Create a deep copy to avoid mutating the original
+  const project = cloneProject(projects[index]);
   let changed = false;
 
   for (const operation of operations) {
@@ -173,7 +184,7 @@ export const applyFileOperationsToProject = (
   project.updatedAt = new Date().toISOString();
   projects[index] = project;
   persistProjects(projects);
-  return project;
+  return cloneProject(project);
 };
 
 export const getStoredGeminiKey = (): string | null => {
@@ -206,4 +217,32 @@ export const setStoredContext7Key = (apiKey: string) => {
 
 export const clearStoredContext7Key = () => {
   removeStorage(CONTEXT7_KEY);
+};
+
+export const getStoredOpenRouterKey = (): string | null => {
+  return readStorage<string | null>(OPENROUTER_KEY, null);
+};
+
+export const setStoredOpenRouterKey = (apiKey: string) => {
+  writeStorage(OPENROUTER_KEY, apiKey);
+};
+
+export const clearStoredOpenRouterKey = () => {
+  removeStorage(OPENROUTER_KEY);
+};
+
+export const getPreferredOpenRouterModel = (): OpenRouterModelId | null => {
+  return readStorage<OpenRouterModelId | null>(OPENROUTER_MODEL_KEY, null);
+};
+
+export const setPreferredOpenRouterModel = (model: OpenRouterModelId) => {
+  writeStorage(OPENROUTER_MODEL_KEY, model);
+};
+
+export const getPreferredBackend = (): BackendProvider | null => {
+  return readStorage<BackendProvider | null>(BACKEND_PROVIDER_KEY, null);
+};
+
+export const setPreferredBackend = (backend: BackendProvider) => {
+  writeStorage(BACKEND_PROVIDER_KEY, backend);
 };

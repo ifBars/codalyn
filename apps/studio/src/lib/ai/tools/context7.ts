@@ -64,7 +64,7 @@ export class Context7ToolSet implements ToolSet {
   async execute(toolCall: ToolCall, context?: any): Promise<ToolResult> {
     try {
       if (toolCall.name === "context7_get_docs") {
-        const { library, topic, tokens = 5000, version } = toolCall.args || {};
+        const { library, topic, tokens = 10000, version } = toolCall.args || {};
         
         if (!library) {
           return {
@@ -76,9 +76,75 @@ export class Context7ToolSet implements ToolSet {
           };
         }
 
+        if (!this.apiKey) {
+          return {
+            toolCallId: toolCall.id,
+            name: toolCall.name,
+            result: null,
+            error: "Context7 API key is required",
+            success: false,
+          };
+        }
+
+        // Try to use MCP tools directly if available (server-side with MCP access)
+        try {
+          if (typeof (globalThis as any).mcp_context7_get_library_docs === "function") {
+            const mcpParams: any = {
+              context7CompatibleLibraryID: library.startsWith("/") ? library : `/${library}`,
+            };
+            if (topic) {
+              mcpParams.topic = topic;
+            }
+            if (tokens) {
+              mcpParams.tokens = tokens;
+            }
+            if (version) {
+              mcpParams.version = version;
+            }
+
+            const result = await (globalThis as any).mcp_context7_get_library_docs(mcpParams);
+            return {
+              toolCallId: toolCall.id,
+              name: toolCall.name,
+              result: result,
+              success: true,
+            };
+          }
+        } catch (mcpError) {
+          // MCP tools not available, continue to API route fallback
+        }
+
         // Use Next.js API route to proxy the request (avoids CORS)
+        // If the provided library name is not a fully-qualified Context7 ID
+        // (e.g. "google/generative-ai" instead of "/googleapis/js-genai"),
+        // try resolving it first via our resolve-library API.
+        let resolvedLibrary = library;
+
+        if (!library.startsWith("/")) {
+          try {
+            const resolveParams = new URLSearchParams();
+            resolveParams.append("libraryName", library);
+
+            const resolveResponse = await fetch(`/api/context7/resolve-library?${resolveParams.toString()}`, {
+              headers: {
+                "x-context7-api-key": this.apiKey,
+              },
+            });
+
+            if (resolveResponse.ok) {
+              const resolveData = await resolveResponse.json();
+              if (resolveData?.libraries?.length && resolveData.libraries[0]?.libraryId) {
+                resolvedLibrary = resolveData.libraries[0].libraryId;
+              }
+            }
+          } catch {
+            // Resolution failed; fall back to the original library string
+          }
+        }
+
         const params = new URLSearchParams();
-        params.append("library", library);
+        params.append("library", resolvedLibrary);
+        params.append("type", "json"); // Request JSON format for structured response
         if (topic) {
           params.append("topic", topic);
         }
@@ -126,11 +192,18 @@ export class Context7ToolSet implements ToolSet {
           };
         }
 
+        if (!this.apiKey) {
+          return {
+            toolCallId: toolCall.id,
+            name: toolCall.name,
+            result: null,
+            error: "Context7 API key is required",
+            success: false,
+          };
+        }
+
         // Try to use MCP tools directly if available (server-side)
-        // Otherwise, use API route as fallback
         try {
-          // Check if we're in an environment with MCP tools available
-          // This would work if the toolset is running server-side with MCP access
           if (typeof (globalThis as any).mcp_context7_resolve_library_id === 'function') {
             const result = await (globalThis as any).mcp_context7_resolve_library_id({ libraryName });
             return {
@@ -144,7 +217,7 @@ export class Context7ToolSet implements ToolSet {
           // MCP tools not available, fall back to API route
         }
 
-        // Fallback: Use Next.js API route
+        // Use Next.js API route
         const params = new URLSearchParams();
         params.append("libraryName", libraryName);
 

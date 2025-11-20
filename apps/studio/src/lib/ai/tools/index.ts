@@ -14,9 +14,15 @@ export class CodalynToolSet implements ToolSet {
     }
 
     getDefinitions(): ToolDefinition[] {
-        // Filter out search_project since VectorStoreToolSet provides a better implementation
+        // Filter out tools that are handled by other tool sets:
+        // - search_project: handled by VectorStoreToolSet
+        // - context7_get_docs, context7_resolve_library: handled by Context7ToolSet
         return toolRegistry
-            .filter((tool) => tool.name !== "search_project")
+            .filter((tool) => 
+                tool.name !== "search_project" &&
+                tool.name !== "context7_get_docs" &&
+                tool.name !== "context7_resolve_library"
+            )
             .map((tool) => ({
                 name: tool.name,
                 description: tool.description,
@@ -87,8 +93,10 @@ export class CodalynToolSet implements ToolSet {
     }
 
     hasTool(name: string): boolean {
-        // Exclude search_project - it's handled by VectorStoreToolSet
-        if (name === "search_project") {
+        // Exclude tools handled by other tool sets:
+        // - search_project: handled by VectorStoreToolSet
+        // - context7_get_docs, context7_resolve_library: handled by Context7ToolSet
+        if (name === "search_project" || name === "context7_get_docs" || name === "context7_resolve_library") {
             return false;
         }
         return getExecutor(name) !== undefined;

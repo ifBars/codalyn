@@ -20,6 +20,7 @@
     "@google/genai": "^1.29.1",
     "@monaco-editor/react": "^4.6.0",
     "@octokit/rest": "^20.0.0",
+    "@openrouter/sdk": "^0.1.17",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.4.0",
     "@supabase/ssr": "^0.0.10",

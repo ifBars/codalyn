@@ -1,5 +1,7 @@
 "use client";
 
+import { SpinningLogo } from "@/components/landing/SpinningLogo";
+
 interface LoadingScreenProps {
   message?: string;
   submessage?: string;
@@ -40,7 +42,7 @@ export function LoadingScreen({ message = "Loading...", submessage }: LoadingScr
           
           {/* Logo image - larger and centered */}
           <div className="relative flex h-48 w-48 items-center justify-center">
-            <img src="/logo.png" alt="Codalyn" className="h-full w-full object-contain" />
+            <SpinningLogo className="h-full w-full" />
           </div>
         </div>
       </div>

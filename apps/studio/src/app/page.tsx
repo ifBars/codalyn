@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { RotatingText } from "@/components/landing/RotatingText";
+import { SpinningLogo } from "@/components/landing/SpinningLogo";
 import { useTypewriterPlaceholder } from "@/lib/useTypewriterPlaceholder";
 
 const PLACEHOLDERS = [
@@ -75,7 +76,7 @@ export default function LandingPage() {
       {/* Navigation */}
       <header className="relative z-10 mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4">
         <Link href="/" className="flex items-center gap-2 text-xl font-semibold text-foreground">
-          <img src="/logo.png" alt="Codalyn" className="h-24 w-24 object-fill" />
+          <SpinningLogo className="h-24 w-24" />
           <span>codalyn</span>
         </Link>
         <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">

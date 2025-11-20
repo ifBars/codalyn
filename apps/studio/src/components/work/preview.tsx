@@ -39,6 +39,40 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
     async function init() {
       let initSuccess = false;
       try {
+        // Register error callback to handle internal server errors
+        WebContainerManager.setErrorCallback((error: string) => {
+          console.log('[Preview] Internal server error detected, showing error popup');
+          
+          // Try to hide Vite error overlay in iframe if it exists
+          try {
+            const iframe = frameRef.current;
+            if (iframe) {
+              const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+              if (iframeDoc && iframeDoc.body) {
+                // Find and hide Vite error overlays
+                const errorOverlays = iframeDoc.querySelectorAll(
+                  '.vite-error-overlay, [class*="vite-error"], [class*="ErrorOverlay"], [id*="vite-error"], [id*="error-overlay"]'
+                );
+                errorOverlays.forEach((overlay) => {
+                  const el = overlay as HTMLElement;
+                  el.style.display = 'none';
+                  el.style.visibility = 'hidden';
+                  el.style.opacity = '0';
+                  el.style.pointerEvents = 'none';
+                });
+              }
+            }
+          } catch (e) {
+            // Ignore CORS or other errors when accessing iframe
+          }
+          
+          // Set errors and show popup (same as other error detection flows)
+          setErrors([error]);
+          setShowErrorPopup(true);
+          hasErrorsRef.current = true;
+          // Note: User can click "Ask AI to Fix" button in the popup to send to AI
+        });
+
         // Check if there's a saved project with files
         const savedProject = getProjectById(projectId);
         const savedFiles = savedProject?.files;
@@ -100,7 +134,12 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
     }
 
     init();
-  }, [projectId]);
+
+    // Cleanup: unregister error callback when component unmounts
+    return () => {
+      WebContainerManager.setErrorCallback(null);
+    };
+  }, [projectId, onRequestFix]);
 
   // Monitor iframe for Vite errors
   useEffect(() => {
@@ -880,11 +919,14 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
     // For other errors or if auto-fix failed, request manual fix
     const message = `Please use your tools to examine the codebase and fix the following error(s):\n\n${errorText}`;
 
+    // Close popup first
+    setShowErrorPopup(false);
+    
+    // Auto-send message to AI (sendMessage already handles sending immediately)
     if (onRequestFix) {
+      console.log('[Preview] Auto-sending error to AI for fixing...');
       onRequestFix(message);
     }
-
-    setShowErrorPopup(false);
   };
 
   const handleRefresh = async () => {
