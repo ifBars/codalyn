@@ -2,6 +2,8 @@
 
 Build beautiful React apps with AI. Just describe what you want, and watch it come to life in real-time.
 
+![Preview](preview.gif)
+
 ## ✨ Features
 
 - 🤖 **AI-Powered Development** - Gemini 2.5 Flash Lite with vision support
