@@ -13,6 +13,7 @@ import {
 
 import { RotatingText } from "@/components/landing/RotatingText";
 import { SpinningLogo } from "@/components/landing/SpinningLogo";
+import { Animated3DBackground } from "@/components/landing/Animated3DBackground";
 import { useTypewriterPlaceholder } from "@/lib/useTypewriterPlaceholder";
 
 const PLACEHOLDERS = [
@@ -30,6 +31,7 @@ export default function LandingPage() {
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
   const [isInputFocused, setIsInputFocused] = useState(false);
+  const [isEasterEggActive, setIsEasterEggActive] = useState(false);
 
   const animatedPlaceholder = useTypewriterPlaceholder({
     placeholders: PLACEHOLDERS,
@@ -54,7 +56,7 @@ export default function LandingPage() {
   return (
     <main className="relative flex min-h-screen flex-col overflow-hidden">
       {/* Animated Background Gradients */}
-      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-black">
+      <div className="pointer-events-none fixed inset-0 -z-20 overflow-hidden bg-black">
         {/* Large swirling gradient orbs */}
         <div className="animated-gradient-orb animated-gradient-orb-1" />
         <div className="animated-gradient-orb animated-gradient-orb-2" />
@@ -73,8 +75,17 @@ export default function LandingPage() {
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/20" />
       </div>
 
+      {/* 3D Animated Background */}
+      <Animated3DBackground 
+        onEasterEggChange={(state) => setIsEasterEggActive(state.isActive)} 
+      />
+
       {/* Navigation */}
-      <header className="relative z-10 mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4">
+      <header 
+        className={`relative z-10 mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4 transition-opacity duration-500 ${
+          isEasterEggActive ? "opacity-0 pointer-events-none" : "opacity-100"
+        }`}
+      >
         <Link href="/" className="flex items-center gap-2 text-xl font-semibold text-foreground">
           <SpinningLogo className="h-24 w-24" />
           <span>codalyn</span>
@@ -98,7 +109,11 @@ export default function LandingPage() {
       </header>
 
       {/* Hero Section */}
-      <section className="relative z-10 mx-auto flex w-full max-w-4xl flex-1 flex-col items-center justify-center px-6 py-20">
+      <section 
+        className={`relative z-10 mx-auto flex w-full max-w-4xl flex-1 flex-col items-center justify-center px-6 py-20 transition-opacity duration-500 ${
+          isEasterEggActive ? "opacity-0 pointer-events-none" : "opacity-100"
+        }`}
+      >
         <div className="w-full space-y-8">
           {/* Headline */}
           <div className="space-y-4 text-center">
@@ -176,7 +191,11 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="relative z-10 mx-auto w-full max-w-7xl border-t border-border px-6 py-8">
+      <footer 
+        className={`relative z-10 mx-auto w-full max-w-7xl border-t border-border px-6 py-8 transition-opacity duration-500 ${
+          isEasterEggActive ? "opacity-0 pointer-events-none" : "opacity-100"
+        }`}
+      >
         <div className="flex flex-col items-center justify-between gap-4 text-sm text-muted-foreground sm:flex-row">
           <p>© {new Date().getFullYear()} Codalyn. Built with WebContainers + Gemini.</p>
           <div className="flex flex-wrap items-center gap-4">
