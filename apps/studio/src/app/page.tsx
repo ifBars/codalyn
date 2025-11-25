@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Github,
   Lightbulb,
@@ -32,10 +32,19 @@ export default function LandingPage() {
   const [prompt, setPrompt] = useState("");
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [isEasterEggActive, setIsEasterEggActive] = useState(false);
+  const [isHeaderVisible, setIsHeaderVisible] = useState(false);
+
+  useEffect(() => {
+    // Trigger fade-in animation after component mounts with a slight delay for smoother effect
+    const timer = setTimeout(() => {
+      setIsHeaderVisible(true);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, []);
 
   const animatedPlaceholder = useTypewriterPlaceholder({
     placeholders: PLACEHOLDERS,
-    typingSpeed: 50,
+    typingSpeed: 55,
     deletingSpeed: 30,
     pauseDuration: 2000,
     isActive: !isInputFocused && prompt === "",
@@ -47,10 +56,6 @@ export default function LandingPage() {
     } else {
       router.push("/builder");
     }
-  };
-
-  const handlePlan = () => {
-    router.push("/dashboard");
   };
 
   return (
@@ -76,23 +81,22 @@ export default function LandingPage() {
       </div>
 
       {/* 3D Animated Background */}
-      <Animated3DBackground 
-        onEasterEggChange={(state) => setIsEasterEggActive(state.isActive)} 
+      <Animated3DBackground
+        onEasterEggChange={(state) => setIsEasterEggActive(state.isActive)}
       />
 
       {/* Navigation */}
-      <header 
-        className={`relative z-10 mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4 transition-opacity duration-500 ${
-          isEasterEggActive ? "opacity-0 pointer-events-none" : "opacity-100"
-        }`}
+      <header
+        className={`relative z-10 mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4 transition-opacity duration-1000 ease-out ${isEasterEggActive ? "opacity-0 pointer-events-none" : isHeaderVisible ? "opacity-100" : "opacity-0"
+          }`}
       >
         <Link href="/" className="flex items-center gap-2 text-xl font-semibold text-foreground">
           <SpinningLogo className="h-24 w-24" />
           <span>codalyn</span>
         </Link>
         <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
-          <Link href="/dashboard" className="transition hover:text-foreground">
-            Dashboard
+          <Link href="/projects" className="transition hover:text-foreground">
+            Projects
           </Link>
           <Link href="/builder" className="transition hover:text-foreground">
             Builder
@@ -100,7 +104,7 @@ export default function LandingPage() {
         </nav>
         <div className="flex items-center gap-4">
           <Link
-            href="/dashboard"
+            href="/projects"
             className="hidden text-sm text-muted-foreground transition hover:text-foreground sm:block"
           >
             Get started
@@ -109,10 +113,9 @@ export default function LandingPage() {
       </header>
 
       {/* Hero Section */}
-      <section 
-        className={`relative z-10 mx-auto flex w-full max-w-4xl flex-1 flex-col items-center justify-center px-6 py-20 transition-opacity duration-500 ${
-          isEasterEggActive ? "opacity-0 pointer-events-none" : "opacity-100"
-        }`}
+      <section
+        className={`relative z-10 mx-auto flex w-full max-w-4xl flex-1 flex-col items-center justify-center px-6 py-20 transition-opacity duration-500 ${isEasterEggActive ? "opacity-0 pointer-events-none" : "opacity-100"
+          }`}
       >
         <div className="w-full space-y-8">
           {/* Headline */}
@@ -149,9 +152,6 @@ export default function LandingPage() {
                   className="flex-1 bg-transparent px-4 py-3 text-base text-foreground placeholder-muted-foreground outline-none"
                 />
                 <div className="flex items-center gap-2 px-3">
-                  <button className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-muted-foreground transition hover:bg-card">
-                    <Plus className="h-4 w-4" />
-                  </button>
                   <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground">
                     <Sparkles className="h-4 w-4" />
                     <span>Gemini Agent</span>
@@ -162,13 +162,6 @@ export default function LandingPage() {
 
             {/* Action Buttons */}
             <div className="mt-4 flex items-center justify-end gap-3">
-              <button
-                onClick={handlePlan}
-                className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm text-foreground transition hover:bg-secondary"
-              >
-                <Lightbulb className="h-4 w-4" />
-                Plan
-              </button>
               <button
                 onClick={handleBuild}
                 className="flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90"
@@ -191,16 +184,15 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer 
-        className={`relative z-10 mx-auto w-full max-w-7xl border-t border-border px-6 py-8 transition-opacity duration-500 ${
-          isEasterEggActive ? "opacity-0 pointer-events-none" : "opacity-100"
-        }`}
+      <footer
+        className={`relative z-10 mx-auto w-full max-w-7xl border-t border-border px-6 py-8 transition-opacity duration-500 ${isEasterEggActive ? "opacity-0 pointer-events-none" : "opacity-100"
+          }`}
       >
         <div className="flex flex-col items-center justify-between gap-4 text-sm text-muted-foreground sm:flex-row">
           <p>© {new Date().getFullYear()} Codalyn. Built with WebContainers + Gemini.</p>
           <div className="flex flex-wrap items-center gap-4">
-            <Link href="/dashboard" className="transition hover:text-foreground">
-              Dashboard
+            <Link href="/projects" className="transition hover:text-foreground">
+              Projects
             </Link>
             <Link href="/builder" className="transition hover:text-foreground">
               Builder

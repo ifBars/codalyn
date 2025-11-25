@@ -213,7 +213,7 @@ export default function BuilderPage() {
   useEffect(() => {
     const preferredBackend = getPreferredBackend() ?? "gemini";
     setBackend(preferredBackend);
-    
+
     if (preferredBackend === "openrouter") {
       const preferredModel = getPreferredOpenRouterModel() ?? DEFAULT_OPENROUTER_MODEL;
       setSelectedModel(preferredModel);
@@ -268,14 +268,14 @@ export default function BuilderPage() {
     const vectorStoreTools = new VectorStoreToolSet({
       vectorStore: vectorStoreRef.current,
     });
-    
+
     // Add Context7 tools if API key is available
     const toolSets: any[] = [
       codalynTools,
       browserTools,
       vectorStoreTools,
     ];
-    
+
     if (context7ApiKey) {
       const context7Tools = new Context7ToolSet({ apiKey: context7ApiKey });
       toolSets.push(context7Tools);
@@ -290,13 +290,13 @@ export default function BuilderPage() {
     // Create adapter based on backend
     const adapter = backendProvider === "openrouter"
       ? new OpenRouterAdapter({
-          apiKey,
-          modelName: model as OpenRouterModelId,
-        })
+        apiKey,
+        modelName: model as OpenRouterModelId,
+      })
       : new GeminiAdapter({
-          apiKey,
-          modelName: model as GeminiModelId,
-        });
+        apiKey,
+        modelName: model as GeminiModelId,
+      });
 
     // Create agent
     agentRef.current = new Agent({
@@ -409,7 +409,7 @@ export default function BuilderPage() {
   const handleModelChange = (nextModel: GeminiModelId | OpenRouterModelId) => {
     setSelectedModel(nextModel);
     const currentBackend = backend;
-    
+
     if (currentBackend === "openrouter") {
       setPreferredOpenRouterModel(nextModel as OpenRouterModelId);
       const storedKey = getStoredOpenRouterKey();
@@ -438,7 +438,7 @@ export default function BuilderPage() {
   const handleBackendChange = (newBackend: BackendProvider) => {
     setBackend(newBackend);
     setPreferredBackend(newBackend);
-    
+
     if (newBackend === "openrouter") {
       const preferredModel = getPreferredOpenRouterModel() ?? DEFAULT_OPENROUTER_MODEL;
       setSelectedModel(preferredModel);
@@ -512,36 +512,36 @@ export default function BuilderPage() {
       return;
     }
 
-      const userMessage = input.trim();
-      setInput("");
-      setIsLoading(true);
+    const userMessage = input.trim();
+    setInput("");
+    setIsLoading(true);
 
-      try {
-        const userMsg: AIMessage = { role: "user", content: userMessage };
-        const history = [...messages, userMsg];
-        // Create initial assistant message for the first phase
-        setMessages([...history, { role: "assistant", content: "" }]);
+    try {
+      const userMsg: AIMessage = { role: "user", content: userMessage };
+      const history = [...messages, userMsg];
+      // Create initial assistant message for the first phase
+      setMessages([...history, { role: "assistant", content: "" }]);
 
-        // Restore conversation history to agent memory
-        // The agent's runStream will add the user message, so we restore previous messages only
-        agentRef.current.reset();
-        const agentMemory = (agentRef.current as any).config.memory;
-        // Restore all previous messages (excluding the new user message which runStream will add)
-        const historyMessages = convertAIMessagesToMessages(messages);
-        for (const msg of historyMessages) {
-          agentMemory.addMessage(msg);
-        }
+      // Restore conversation history to agent memory
+      // The agent's runStream will add the user message, so we restore previous messages only
+      agentRef.current.reset();
+      const agentMemory = (agentRef.current as any).config.memory;
+      // Restore all previous messages (excluding the new user message which runStream will add)
+      const historyMessages = convertAIMessagesToMessages(messages);
+      for (const msg of historyMessages) {
+        agentMemory.addMessage(msg);
+      }
 
-        let fullResponse = "";
-        let operations: FileOperation[] = []; // Accumulate all operations across all phases
-        let capturedScreenshot: string | undefined = undefined;
-        const toolCalls: any[] = []; // Current phase's tool calls
-        const toolResults: any[] = []; // Current phase's tool results
-        const allToolCalls: any[] = []; // Accumulate all tool calls across all phases
-        const allToolResults: any[] = []; // Accumulate all tool results across all phases
-        let currentIteration = 0;
-        // Initialize to point to the assistant message we just created (last message in array)
-        let currentPhaseMessageIndex = history.length; // Index of the assistant message we just added
+      let fullResponse = "";
+      let operations: FileOperation[] = []; // Accumulate all operations across all phases
+      let capturedScreenshot: string | undefined = undefined;
+      const toolCalls: any[] = []; // Current phase's tool calls
+      const toolResults: any[] = []; // Current phase's tool results
+      const allToolCalls: any[] = []; // Accumulate all tool calls across all phases
+      const allToolResults: any[] = []; // Accumulate all tool results across all phases
+      let currentIteration = 0;
+      // Initialize to point to the assistant message we just created (last message in array)
+      let currentPhaseMessageIndex = history.length; // Index of the assistant message we just added
 
       // Helper function to update message with current operations (for real-time display)
       const updateMessageWithOperations = () => {
@@ -569,13 +569,13 @@ export default function BuilderPage() {
         if (event.type === "iteration") {
           // New iteration/phase starting
           const newIteration = event.iteration;
-          
+
           // If this is a new iteration (not the first), finalize previous phase and create new message
           if (newIteration > currentIteration && currentIteration > 0) {
             // Save previous phase's operations before starting new phase
             const previousPhaseOps = extractFileOperations(toolCalls, toolResults);
             const validatedPreviousPhaseOps = filterValidFileOperations(previousPhaseOps);
-            
+
             // Finalize previous phase's message with its operations
             setMessages((prev) => {
               const next = [...prev];
@@ -598,7 +598,7 @@ export default function BuilderPage() {
               return prev;
             });
           }
-          
+
           currentIteration = newIteration;
           // Reset response and operations for new phase (but keep them accumulated in allToolCalls/allToolResults)
           fullResponse = "";
@@ -631,7 +631,7 @@ export default function BuilderPage() {
         } else if (event.type === "tool_result") {
           toolResults.push(event.toolResult);
           allToolResults.push(event.toolResult);
-          
+
           // Handle screenshot capture
           if (event.toolResult.name === "capture_screenshot" && event.toolResult.success) {
             const screenshot = event.toolResult.result?.screenshot;
@@ -642,8 +642,8 @@ export default function BuilderPage() {
                 const next = [...prev];
                 if (currentPhaseMessageIndex >= 0 && currentPhaseMessageIndex < next.length) {
                   const phaseMsg = next[currentPhaseMessageIndex];
-                  next[currentPhaseMessageIndex] = { 
-                    ...phaseMsg, 
+                  next[currentPhaseMessageIndex] = {
+                    ...phaseMsg,
                     screenshot,
                     operations: phaseMsg.operations, // Preserve operations
                   };
@@ -673,7 +673,7 @@ export default function BuilderPage() {
           // Extract file operations from current phase's tool calls and results
           const currentPhaseOps = extractFileOperations(toolCalls, toolResults);
           const validatedCurrentPhaseOps = filterValidFileOperations(currentPhaseOps);
-          
+
           // Update current phase message with its operations
           setMessages((prev) => {
             const next = [...prev];
@@ -686,7 +686,7 @@ export default function BuilderPage() {
             }
             return next;
           });
-          
+
           // Accumulate all operations from all phases for final processing
           operations = filterValidFileOperations(extractFileOperations(allToolCalls, allToolResults));
         }
@@ -821,7 +821,7 @@ export default function BuilderPage() {
 
   const handleProjectChange = (nextId: string) => {
     if (nextId === "__dashboard__") {
-      router.push("/dashboard");
+      router.push("/projects");
       return;
     }
     setProjectId(nextId);
@@ -953,15 +953,15 @@ export default function BuilderPage() {
           >
             {backend === "openrouter"
               ? OPENROUTER_MODEL_OPTIONS.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))
               : GEMINI_MODEL_OPTIONS.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
           </select>
         </div>
 
@@ -1057,8 +1057,8 @@ export default function BuilderPage() {
             <Link href="/" className="rounded px-2 py-1 transition hover:bg-card hover:text-foreground">
               Landing
             </Link>
-            <Link href="/dashboard" className="rounded px-2 py-1 transition hover:bg-card hover:text-foreground">
-              Dashboard
+            <Link href="/projects" className="rounded px-2 py-1 transition hover:bg-card hover:text-foreground">
+              Projects
             </Link>
             <Link href="/builder" className="rounded border border-primary/50 bg-primary/10 px-2 py-1 text-primary">
               Builder
@@ -1076,15 +1076,15 @@ export default function BuilderPage() {
             >
               {backend === "openrouter"
                 ? OPENROUTER_MODEL_OPTIONS.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))
                 : GEMINI_MODEL_OPTIONS.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
             </select>
             <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
           </div>
@@ -1111,10 +1111,10 @@ export default function BuilderPage() {
             Manage API key
           </button>
           <Link
-            href="/dashboard"
+            href="/projects"
             className="rounded border border-primary/50 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary/20"
           >
-            Open dashboard
+            Open projects
           </Link>
         </div>
       </header>
@@ -1178,10 +1178,10 @@ export default function BuilderPage() {
                   Create a project from the dashboard to capture AI diffs, metadata, and source files.
                 </p>
                 <Link
-                  href="/dashboard"
+                  href="/projects"
                   className="mt-3 inline-flex items-center gap-1.5 text-primary hover:text-primary/80"
                 >
-                  <span>Open dashboard</span>
+                  <span>Open projects</span>
                   <ArrowUp className="h-3 w-3 rotate-45" />
                 </Link>
               </div>
@@ -1212,8 +1212,8 @@ export default function BuilderPage() {
               <div
                 key={`${msg.role}-${idx}`}
                 className={`rounded px-3 py-2 text-xs leading-relaxed ${msg.role === "user"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-card text-card-foreground"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-card text-card-foreground"
                   }`}
               >
                 {msg.screenshot && (

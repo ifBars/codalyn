@@ -1,15 +1,15 @@
+"use client";
+
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { getUserProjects } from "@/server/actions/projects";
 import {
-  ArrowUpRight,
-  GitBranch,
-  LayoutDashboard,
   Sparkles,
-  TimerReset,
 } from "lucide-react";
 import Link from "next/link";
+import { ProjectGrid } from "@/components/dashboard/ProjectGrid";
+import { useEffect, useState } from "react";
+import { StoredProject, listProjects } from "@/lib/project-storage";
 
 type StatusKey = "draft" | "generating" | "ready" | "error" | string;
 
@@ -35,15 +35,34 @@ function formatDate(input?: Date | null) {
   }
 }
 
-export default async function DashboardPage() {
-  const projects = await getUserProjects();
+export default function DashboardPage() {
+  const [projects, setProjects] = useState<StoredProject[]>([]);
 
-  const generatingCount = projects.filter(
-    (project) => project.status === "generating"
-  ).length;
-  const readyCount = projects.filter(
-    (project) => project.status === "ready"
-  ).length;
+  const refresh = () => setProjects(listProjects());
+
+  useEffect(() => {
+    refresh();
+    if (typeof window === "undefined") return;
+    const handler = (event: StorageEvent) => {
+      if (!event.key || event.key === "codalyn.projects.v1") {
+        refresh();
+      }
+    };
+    window.addEventListener("storage", handler);
+    return () => window.removeEventListener("storage", handler);
+  }, []);
+
+  const mappedProjects = projects.map((p) => ({
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    status: "ready", // Local projects are always ready
+    updatedAt: new Date(p.updatedAt),
+    githubRepoUrl: null,
+  }));
+
+  const generatingCount = 0; // Local projects don't have generating status
+  const readyCount = projects.length;
 
   return (
     <div className="space-y-8">
@@ -72,23 +91,13 @@ export default async function DashboardPage() {
               <Sparkles className="h-5 w-5" />
               New project
             </Link>
-            <Link
-              href="/projects"
-              className={cn(
-                buttonVariants({ variant: "outline", size: "lg" }),
-                "gap-2 rounded-full"
-              )}
-            >
-              <LayoutDashboard className="h-5 w-5" />
-              View dashboard
-            </Link>
           </div>
         </div>
 
         <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
             label="Total projects"
-            value={projects.length}
+            value={mappedProjects.length}
             detail="Tracked across your workspace"
           />
           <StatCard
@@ -103,88 +112,13 @@ export default async function DashboardPage() {
           />
           <StatCard
             label="Sandboxes"
-            value={`${projects.length} / ∞`}
+            value={`${mappedProjects.length} / ∞`}
             detail="Provisioned on demand"
           />
         </div>
       </section>
 
-      {projects.length === 0 ? (
-        <div className="glass-panel flex flex-col items-center justify-center gap-6 rounded-[28px] border border-dashed border-white/20 px-8 py-16 text-center">
-          <span className="rounded-full border border-white/15 bg-white/10 px-4 py-1 text-xs uppercase tracking-[0.4em] text-muted-foreground">
-            Getting started
-          </span>
-          <div className="space-y-4 text-balance">
-            <h2 className="text-2xl font-semibold">
-              Your first project is minutes away
-            </h2>
-            <p className="max-w-md text-sm text-muted-foreground">
-              Bring a problem statement or spec. Codalyn will draft a plan,
-              propose diffs, and let you preview each change before it applies.
-            </p>
-          </div>
-          <Link
-            href="/projects/new"
-            className={cn(buttonVariants({ size: "lg" }), "gap-2 rounded-full")}
-          >
-            <Sparkles className="h-5 w-5" />
-            Create your first project
-          </Link>
-        </div>
-      ) : (
-        <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
-          {projects.map((project) => {
-            const status = statusMeta[project.status as StatusKey] ?? {
-              label: project.status,
-              badge: "outline",
-            };
-
-            return (
-              <Link
-                key={project.id}
-                href={`/work/${project.id}`}
-                className="group relative overflow-hidden rounded-[26px] border border-white/10 bg-white/[0.04] p-6 transition duration-200 hover:border-white/30 hover:bg-white/10"
-              >
-                <div className="absolute inset-x-6 top-6 flex items-center justify-between">
-                  <Badge variant={status.badge}>{status.label}</Badge>
-                  <ArrowUpRight className="h-5 w-5 text-muted-foreground transition duration-200 group-hover:text-primary" />
-                </div>
-
-                <div className="pt-12">
-                  <h3 className="text-xl font-semibold tracking-tight">
-                    {project.name}
-                  </h3>
-                  {project.description ? (
-                    <p className="mt-2 text-sm text-muted-foreground line-clamp-3">
-                      {project.description}
-                    </p>
-                  ) : (
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      No description yet—click to start a spec or prompt.
-                    </p>
-                  )}
-                </div>
-
-                <div className="mt-6 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                  <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1">
-                    <TimerReset className="h-3.5 w-3.5" />
-                    Updated {formatDate(project.updatedAt)}
-                  </div>
-                  {project.githubRepoUrl && (
-                    <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1">
-                      <GitBranch className="h-3.5 w-3.5" />
-                      Connected to GitHub
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 font-mono">
-                    ID: {project.id.slice(0, 8)}…
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      )}
+      <ProjectGrid projects={mappedProjects} onRefresh={refresh} />
     </div>
   );
 }
@@ -199,7 +133,7 @@ function StatCard({
   detail: string;
 }) {
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/[0.06] px-6 py-5 shadow-surface-lg">
+    <div className="rounded-3xl border border-white/5 bg-white/[0.02] px-6 py-5 shadow-surface-lg transition-all hover:bg-white/[0.04]">
       <p className="text-xs uppercase tracking-[0.32em] text-muted-foreground">
         {label}
       </p>
