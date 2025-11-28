@@ -144,7 +144,7 @@ export function ProjectCard({ project, onRefresh }: ProjectCardProps) {
                     </div>
 
                     <div className="flex items-center gap-2 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                        <Link href={`/work/${project.id}`} className="w-full">
+                        <Link href={`/builder?projectId=${project.id}`} className="w-full">
                             <Button className="w-full gap-2 bg-white text-black hover:bg-white/90">
                                 <Play className="h-4 w-4 fill-current" />
                                 Open Studio

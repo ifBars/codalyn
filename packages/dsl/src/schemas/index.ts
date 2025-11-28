@@ -6,7 +6,7 @@ import {
 } from "@codalyn/shared";
 
 // Field Types
-export const FieldTypeSchema = z.enum(SUPPORTED_FIELD_TYPES as [string, ...string[]]);
+export const FieldTypeSchema = z.enum(SUPPORTED_FIELD_TYPES as unknown as [string, ...string[]]);
 
 // Component Prop Schema
 export const ComponentPropSchema = z.object({
@@ -42,7 +42,7 @@ export const ComponentStyleSchema = z.object({
 export const ComponentSpecSchema = z.object({
   id: z.string(),
   name: z.string().min(1),
-  type: z.enum(SUPPORTED_COMPONENT_TYPES as [string, ...string[]]),
+  type: z.enum(SUPPORTED_COMPONENT_TYPES as unknown as [string, ...string[]]),
   props: z.array(ComponentPropSchema).default([]),
   state: z.array(ComponentStateSchema).default([]),
   styles: ComponentStyleSchema.optional(),
@@ -67,7 +67,7 @@ export const EntityFieldSchema = z.object({
 // Entity Relation Schema
 export const EntityRelationSchema = z.object({
   name: z.string().min(1),
-  type: z.enum(SUPPORTED_RELATION_TYPES as [string, ...string[]]),
+  type: z.enum(SUPPORTED_RELATION_TYPES as unknown as [string, ...string[]]),
   targetEntity: z.string().min(1),
   foreignKey: z.string().optional(),
   description: z.string().optional(),

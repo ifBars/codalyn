@@ -5,35 +5,35 @@
  */
 
 import { getUser } from "@/lib/auth";
-import { createAgent, AgentEvent, ConversationMemory, getDefaultSystemPrompt, type BackendProvider } from "@/lib/ai";
+import { createAgent, AgentEvent, ConversationMemory, getDefaultSystemPrompt } from "@/lib/ai";
+import { createBuilderMdapOrchestrator } from "@/lib/ai/mdap";
 import { SandboxManager } from "@codalyn/sandbox";
 import { db } from "@/lib/db";
 import { aiSessions, toolLogs } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { randomUUID } from "crypto";
+import { saveArtifacts } from "./artifacts";
+import type { Artifact } from "@codalyn/accuralai";
 
 const sandboxManager = new SandboxManager();
 
-// Helper to get API key and backend from environment or defaults
-function getBackendConfig(): { backend: BackendProvider; apiKey: string; modelName: string } {
-  // Check for OpenRouter first, then fall back to Gemini
-  if (process.env.OPENROUTER_API_KEY) {
-    return {
-      backend: "openrouter",
-      apiKey: process.env.OPENROUTER_API_KEY,
-      modelName: process.env.OPENROUTER_MODEL || "openrouter/auto",
-    };
+// Helper to get Gemini provider keys and defaults from environment
+function getAccuralAIConfig(): {
+  modelName: string;
+  googleApiKey: string;
+} {
+  const rawModel = process.env.ACCURALAI_MODEL || "gemini-2.5-flash";
+  const modelName = rawModel.startsWith("google:") ? rawModel.replace(/^google:/, "") : rawModel;
+  const googleApiKey =
+    process.env.ACCURALAI_GOOGLE_API_KEY ||
+    process.env.GOOGLE_GENAI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    "";
+
+  if (!googleApiKey) {
+    throw new Error("Configure ACCURALAI_GOOGLE_API_KEY (or GOOGLE_GENAI_API_KEY) for Gemini access");
   }
-  
-  if (process.env.GEMINI_API_KEY) {
-    return {
-      backend: "gemini",
-      apiKey: process.env.GEMINI_API_KEY,
-      modelName: process.env.GEMINI_MODEL || "gemini-2.0-flash-exp",
-    };
-  }
-  
-  throw new Error("Neither OPENROUTER_API_KEY nor GEMINI_API_KEY is configured");
+
+  return { modelName, googleApiKey };
 }
 
 export interface ChatMessage {
@@ -71,7 +71,7 @@ export async function chatWithAI(
   const user = await getUser();
   if (!user) throw new Error("Unauthorized");
 
-  const backendConfig = getBackendConfig();
+  const accuralaiConfig = getAccuralAIConfig();
 
   // Get or create sandbox for project
   // Use mock sandbox for server-side execution (WebContainers only work in browser)
@@ -105,11 +105,10 @@ export async function chatWithAI(
 
   // Create agent
   console.log("[AI Debug] Creating agent...");
-  console.log(`[AI Debug] Using backend: ${backendConfig.backend}`);
+  console.log(`[AI Debug] Using Google Gemini backend`);
   const agent = createAgent({
-    apiKey: backendConfig.apiKey,
-    modelName: backendConfig.modelName,
-    backend: backendConfig.backend,
+    modelName: accuralaiConfig.modelName,
+    googleApiKey: accuralaiConfig.googleApiKey,
     sandbox,
     systemPrompt,
     maxIterations: 10,
@@ -180,7 +179,7 @@ export async function* streamChatWithAI(
   const user = await getUser();
   if (!user) throw new Error("Unauthorized");
 
-  const backendConfig = getBackendConfig();
+  const accuralaiConfig = getAccuralAIConfig();
 
   // Use mock sandbox for server-side execution (WebContainers only work in browser)
   console.log("[AI Debug] Creating sandbox...");
@@ -202,11 +201,10 @@ export async function* streamChatWithAI(
 
   // Create agent
   console.log("[AI Debug] Creating agent...");
-  console.log(`[AI Debug] Using backend: ${backendConfig.backend}`);
+  console.log(`[AI Debug] Using Google Gemini backend`);
   const agent = createAgent({
-    apiKey: backendConfig.apiKey,
-    modelName: backendConfig.modelName,
-    backend: backendConfig.backend,
+    modelName: accuralaiConfig.modelName,
+    googleApiKey: accuralaiConfig.googleApiKey,
     sandbox,
     systemPrompt,
     maxIterations: 10,
@@ -271,6 +269,129 @@ export async function* streamChatWithAI(
     .where(eq(aiSessions.id, sessionId));
 
   console.log(`[AI Debug] streamChatWithAI() - Completed`);
+}
+
+/**
+ * Chat with AI using MDAP orchestrator for multi-agent execution
+ * Generates plans and artifacts following the Aurelius MDAP pattern
+ */
+export async function chatWithMDAP(
+  sessionId: string,
+  message: string,
+  projectId: string
+): Promise<{
+  response: string;
+  plan?: any;
+  planArtifact?: Artifact;
+  artifacts: Artifact[];
+  toolCalls: Array<{ name: string; args: any; result: any }>;
+}> {
+  console.log("[MDAP Debug] chatWithMDAP() - Starting");
+  console.log(`[MDAP Debug] Session ID: ${sessionId}`);
+  console.log(`[MDAP Debug] Project ID: ${projectId}`);
+  console.log(`[MDAP Debug] Message: ${message.substring(0, 100)}${message.length > 100 ? "..." : ""}`);
+
+  const user = await getUser();
+  if (!user) throw new Error("Unauthorized");
+
+  const accuralaiConfig = getAccuralAIConfig();
+
+  // Get session from database
+  console.log("[MDAP Debug] Fetching session from database...");
+  const session = await db.query.aiSessions.findFirst({
+    where: eq(aiSessions.id, sessionId),
+  });
+
+  if (!session) {
+    throw new Error("Session not found");
+  }
+
+  // Create MDAP orchestrator
+  console.log("[MDAP Debug] Creating MDAP orchestrator...");
+  const orchestrator = createBuilderMdapOrchestrator({
+    modelName: `google:${accuralaiConfig.modelName}`,
+    googleApiKey: accuralaiConfig.googleApiKey,
+    maxParallelTasks: 3,
+    maxRetries: 2,
+  });
+  console.log("[MDAP Debug] MDAP orchestrator created");
+
+  // Execute MDAP workflow
+  console.log("[MDAP Debug] Executing MDAP workflow...");
+  const startTime = Date.now();
+  const result = await orchestrator.execute({
+    prompt: message,
+    workflow: "sequential", // Use sequential workflow for proper context accumulation
+  });
+  const duration = Date.now() - startTime;
+  console.log(`[MDAP Debug] MDAP execution completed (${duration}ms)`);
+  console.log(`[MDAP Debug] Generated ${result.artifacts.length} artifacts`);
+  console.log(`[MDAP Debug] Plan generated: ${result.planArtifact ? "Yes" : "No"}`);
+
+  // Save all artifacts to database
+  if (result.artifacts.length > 0) {
+    console.log("[MDAP Debug] Saving artifacts to database...");
+    await saveArtifacts(projectId, result.artifacts, sessionId);
+    console.log(`[MDAP Debug] Saved ${result.artifacts.length} artifacts`);
+  }
+
+  // Log tool executions from MDAP
+  console.log(`[MDAP Debug] Logging tool executions...`);
+  const allToolCalls: Array<{ name: string; args: any; result: any }> = [];
+
+  for (const execution of result.results) {
+    if (execution.artifacts && execution.artifacts.length > 0) {
+      // Track artifact creation as implicit tool calls
+      for (const artifact of execution.artifacts) {
+        allToolCalls.push({
+          name: "create_artifact",
+          args: {
+            filename: artifact.filename,
+            path: artifact.path,
+            type: artifact.type,
+          },
+          result: { success: true, artifactId: artifact.id },
+        });
+
+        await db.insert(toolLogs).values({
+          sessionId,
+          toolName: "create_artifact",
+          inputs: { filename: artifact.filename, path: artifact.path, type: artifact.type },
+          output: { success: true, artifactId: artifact.id },
+          error: null,
+          executionTime: "0",
+        });
+      }
+    }
+  }
+
+  // Update session context
+  console.log("[MDAP Debug] Updating session context in database...");
+  await db
+    .update(aiSessions)
+    .set({
+      context: {
+        mdapExecution: {
+          plan: result.plan,
+          artifacts: result.artifacts.map(a => a.id),
+          timestamp: new Date().toISOString(),
+        },
+      },
+      status: "completed",
+      updatedAt: new Date(),
+    })
+    .where(eq(aiSessions.id, sessionId));
+
+  console.log(`[MDAP Debug] chatWithMDAP() - Completed`);
+  console.log(`[MDAP Debug] Final output length: ${result.finalOutput.length} chars`);
+
+  return {
+    response: result.finalOutput,
+    plan: result.plan,
+    planArtifact: result.planArtifact,
+    artifacts: result.artifacts,
+    toolCalls: allToolCalls,
+  };
 }
 
 

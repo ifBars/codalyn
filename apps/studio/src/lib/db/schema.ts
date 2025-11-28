@@ -102,6 +102,25 @@ export const analytics = pgTable("analytics", {
   timestamp: timestamp("timestamp", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// MDAP Artifacts table
+export const artifacts = pgTable("artifacts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  sessionId: uuid("session_id").references(() => aiSessions.id, { onDelete: "cascade" }),
+  artifactId: text("artifact_id").notNull(), // From MDAP artifact.id (nanoid)
+  filename: text("filename").notNull(),
+  path: text("path").notNull(),
+  content: text("content").notNull(),
+  mimeType: text("mime_type").notNull(),
+  type: text("type").notNull(), // plan | code | markdown | json | image | text | other
+  metadata: jsonb("metadata").notNull(), // ArtifactMetadata (agentId, agentRole, description, tags, etc.)
+  version: text("version").notNull().default("1"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   projects: many(projects),
@@ -174,5 +193,16 @@ export const analyticsRelations = relations(analytics, ({ one }) => ({
   project: one(projects, {
     fields: [analytics.projectId],
     references: [projects.id],
+  }),
+}));
+
+export const artifactsRelations = relations(artifacts, ({ one }) => ({
+  project: one(projects, {
+    fields: [artifacts.projectId],
+    references: [projects.id],
+  }),
+  session: one(aiSessions, {
+    fields: [artifacts.sessionId],
+    references: [aiSessions.id],
   }),
 }));

@@ -25,11 +25,13 @@ export const deletePathExecutor: ToolExecutor = {
         },
       };
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: message.includes("Path not found")
+          ? message
+          : message,
       };
     }
   },
 };
-

@@ -1,53 +1,43 @@
+"use client";
+
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { requireAuth } from "@/lib/auth";
-import { createProject } from "@/server/actions/projects";
-import { redirect } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, GitBranch, Sparkles } from "lucide-react";
+import { createProject } from "@/lib/project-storage";
+import { useState } from "react";
 
-export default async function NewProjectPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ error?: string }>;
-}) {
-  await requireAuth();
-  const params = await searchParams;
-  const decodedError = params.error ? decodeURIComponent(params.error) : null;
+export default function NewProjectPage() {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
 
-  async function handleCreateProject(formData: FormData) {
-    "use server";
+  const handleCreateProject = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError(null);
 
-    const name = formData.get("name") as string;
-    const description = formData.get("description") as string;
+    const formData = new FormData(event.currentTarget);
+    const name = (formData.get("name") as string) || "";
+    const description = (formData.get("description") as string) || "";
 
-    if (!name || name.trim().length === 0) {
-      redirect(
-        "/projects/new?error=" +
-          encodeURIComponent("Project name is required")
-      );
+    if (!name.trim()) {
+      setError("Project name is required");
       return;
     }
 
     try {
-      const project = await createProject({
+      const project = createProject({
         name: name.trim(),
-        description: description?.trim() || undefined,
+        description: description.trim() || undefined,
       });
-
-      redirect(`/studio/${project.id}`);
-    } catch (error) {
-      redirect(
-        "/projects/new?error=" +
-          encodeURIComponent(
-            error instanceof Error ? error.message : "Failed to create project"
-          )
-      );
+      router.push(`/builder?projectId=${project.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create project");
     }
-  }
+  };
 
   return (
     <div className="space-y-10">
@@ -80,13 +70,13 @@ export default async function NewProjectPage({
             </p>
           </div>
 
-          {decodedError && (
+          {error && (
             <div className="rounded-2xl border border-destructive/40 bg-destructive/10 px-5 py-3 text-sm text-destructive">
-              {decodedError}
+              {error}
             </div>
           )}
 
-          <form action={handleCreateProject} className="space-y-8">
+          <form onSubmit={handleCreateProject} className="space-y-8">
             <div className="grid gap-6 md:grid-cols-2">
               <div className="space-y-3">
                 <label className="text-sm font-medium tracking-wide text-muted-foreground">

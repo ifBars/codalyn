@@ -77,8 +77,9 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
         const savedProject = getProjectById(projectId);
         const savedFiles = savedProject?.files;
 
-        // Pass saved files to initProject so dependencies are preserved
-        const { url } = await WebContainerManager.initProject(savedFiles);
+        // Pass saved files and projectId to initProject so dependencies are preserved
+        // and the webcontainer knows when we switch between projects
+        const { url } = await WebContainerManager.initProject(savedFiles, projectId);
         setPreviewUrl(url);
         initSuccess = true; // Mark as successful if we got a URL
 

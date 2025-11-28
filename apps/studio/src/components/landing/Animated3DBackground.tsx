@@ -135,8 +135,8 @@ function AnimatedMesh({
   const hasTriggeredRef = useRef(false);
 
   // Thresholds for easter egg trigger
-  const FAST_SPIN_THRESHOLD = 1.0;
-  const FAST_SPIN_DURATION = 1.0;
+  const FAST_SPIN_THRESHOLD = 1.25;
+  const FAST_SPIN_DURATION = 1.5;
   const CUMULATIVE_SPIN_THRESHOLD = 3.0;
 
   useFrame((state, delta) => {

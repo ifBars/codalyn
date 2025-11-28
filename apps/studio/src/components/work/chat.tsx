@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition, useImperativeHandle, forwardRef } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { createAISession, chatWithAI } from "@/server/actions/ai";
+import { createAISession, chatWithAI, chatWithMDAP } from "@/server/actions/ai";
 import { ThumbsUp, ThumbsDown, MoreVertical, Plus, ArrowUp } from "lucide-react";
 
 type Message = {
@@ -17,12 +17,18 @@ export interface ChatHandle {
   sendMessage: (message: string) => void;
 }
 
-const Chat = forwardRef<ChatHandle, { 
+const Chat = forwardRef<ChatHandle, {
   projectId: string;
   sessionId?: string;
-}>(({ 
-  projectId, 
-  sessionId: initialSessionId 
+  onNewPlan?: (plan: any) => void;
+  onNewArtifacts?: (artifacts: any[]) => void;
+  useMDAP?: boolean;
+}>(({
+  projectId,
+  sessionId: initialSessionId,
+  onNewPlan,
+  onNewArtifacts,
+  useMDAP = false
 }, ref) => {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -91,20 +97,44 @@ const Chat = forwardRef<ChatHandle, {
           setSessionId(currentSessionId);
         }
 
-        // Call AI
-        const { response, toolCalls } = await chatWithAI(
-          currentSessionId,
-          text.trim(),
-          projectId
-        );
+        // Call AI (with MDAP if enabled)
+        if (useMDAP) {
+          const result = await chatWithMDAP(
+            currentSessionId,
+            text.trim(),
+            projectId
+          );
 
-        const assistantMsg: Message = {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: response,
-          toolCalls,
-        };
-        setMessages((m) => [...m, assistantMsg]);
+          const assistantMsg: Message = {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: result.response,
+            toolCalls: result.toolCalls,
+          };
+          setMessages((m) => [...m, assistantMsg]);
+
+          // Notify parent of new artifacts
+          if (result.planArtifact && onNewPlan) {
+            onNewPlan(result.planArtifact);
+          }
+          if (result.artifacts && result.artifacts.length > 0 && onNewArtifacts) {
+            onNewArtifacts(result.artifacts);
+          }
+        } else {
+          const { response, toolCalls } = await chatWithAI(
+            currentSessionId,
+            text.trim(),
+            projectId
+          );
+
+          const assistantMsg: Message = {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: response,
+            toolCalls,
+          };
+          setMessages((m) => [...m, assistantMsg]);
+        }
       } catch (error) {
         const errorMsg: Message = {
           id: crypto.randomUUID(),

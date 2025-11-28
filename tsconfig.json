@@ -24,7 +24,8 @@
       "@codalyn/sandbox": ["./packages/sandbox/src"],
       "@codalyn/tools": ["./packages/tools/src"],
       "@codalyn/runtime": ["./packages/runtime/src"],
-      "@codalyn/shared": ["./packages/shared/src"]
+      "@codalyn/shared": ["./packages/shared/src"],
+      "@codalyn/accuralai": ["./packages/accuralai/src"]
     }
   },
   "include": [],

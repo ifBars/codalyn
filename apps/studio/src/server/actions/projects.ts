@@ -99,7 +99,12 @@ export async function initializeGitHubRepo(projectId: string, githubToken: strin
   }
 
   const client = createGitHubClient(githubToken);
-  const { url, fullName } = await createRepository(client, `codalyn-${project.name}`, project.description, false);
+  const { url, fullName } = await createRepository(
+    client,
+    `codalyn-${project.name}`,
+    project.description || undefined,
+    false
+  );
 
   await db
     .update(projects)

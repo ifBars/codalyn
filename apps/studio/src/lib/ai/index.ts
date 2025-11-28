@@ -22,10 +22,8 @@ export { Agent } from "./core/agent";
 export { ConversationMemory } from "./core/memory";
 
 // Providers
-export { GeminiAdapter } from "./providers/gemini";
-export type { GeminiAdapterConfig } from "./providers/gemini";
-export { OpenRouterAdapter } from "./providers/openrouter";
-export type { OpenRouterAdapterConfig } from "./providers/openrouter";
+export { AccuralAIAdapter } from "./providers/accuralai";
+export type { AccuralAIAdapterConfig } from "./providers/accuralai";
 
 // Tools
 export { CodalynToolSet } from "./tools/index";
@@ -40,38 +38,35 @@ export type { Context7ToolSetConfig } from "./tools/context7";
 // Sandbox
 export { WebContainerSandbox } from "./sandbox/webcontainer-sandbox";
 
+// MDAP orchestration helpers
+export { createBuilderMdapOrchestrator } from "./mdap";
+
 /**
  * Convenience function to create a fully configured agent
  */
 import { Agent } from "./core/agent";
-import { GeminiAdapter } from "./providers/gemini";
-import { OpenRouterAdapter } from "./providers/openrouter";
+import { AccuralAIAdapter } from "./providers/accuralai";
 import { CodalynToolSet } from "./tools/index";
 import { ConversationMemory } from "./core/memory";
 import type { SandboxInterface } from "@codalyn/sandbox";
-import type { BackendProvider } from "./core/types";
 
 export interface CreateAgentOptions {
-    apiKey: string;
     modelName?: string;
-    backend?: BackendProvider;
     sandbox: SandboxInterface;
     systemPrompt?: string;
     maxIterations?: number;
+    googleApiKey?: string;
 }
 
 export function createAgent(options: CreateAgentOptions): Agent {
-    const backend = options.backend || "gemini";
-    
-    const adapter = backend === "openrouter"
-        ? new OpenRouterAdapter({
-            apiKey: options.apiKey,
-            modelName: options.modelName,
-        })
-        : new GeminiAdapter({
-            apiKey: options.apiKey,
-            modelName: options.modelName,
-        });
+    if (!options.googleApiKey) {
+        throw new Error("Google API key is required to create an agent");
+    }
+
+    const adapter = new AccuralAIAdapter({
+        googleApiKey: options.googleApiKey,
+        modelName: options.modelName,
+    });
 
     const toolSet = new CodalynToolSet(options.sandbox);
     const memory = new ConversationMemory(options.systemPrompt);

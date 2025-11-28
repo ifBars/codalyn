@@ -13,6 +13,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@codalyn/accuralai": "workspace:*",
     "@codalyn/runtime": "workspace:*",
     "@codalyn/sandbox": "workspace:*",
     "@codalyn/shared": "workspace:*",

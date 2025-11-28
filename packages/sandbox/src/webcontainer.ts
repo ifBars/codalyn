@@ -70,7 +70,30 @@ export class WebContainerSandbox implements SandboxInterface {
 
   async deletePath(path: string, options?: { recursive?: boolean }): Promise<void> {
     if (!this.webcontainer) throw new Error("Sandbox not initialized");
-    await this.webcontainer.fs.rm(path, { recursive: options?.recursive ?? false });
+
+    // Normalize to a workspace-relative path (WebContainers expect relative paths)
+    let normalizedPath = path.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+/g, "/");
+    if (normalizedPath.startsWith("home/")) {
+      const srcIndex = normalizedPath.indexOf("src/");
+      if (srcIndex >= 0) {
+        normalizedPath = normalizedPath.substring(srcIndex);
+      } else {
+        // Drop the leading home/<random>/ prefix and use the last path segments
+        const parts = normalizedPath.split("/").filter(Boolean);
+        if (parts.length > 1) {
+          normalizedPath = parts.slice(parts.length - 2).join("/");
+        }
+      }
+    }
+
+    try {
+      await this.webcontainer.fs.stat(normalizedPath);
+    } catch (err: any) {
+      const code = err?.code || err?.message || "ENOENT";
+      throw new Error(`Path not found: ${path} (resolved to ${normalizedPath}) [${code}]`);
+    }
+
+    await this.webcontainer.fs.rm(normalizedPath, { recursive: options?.recursive ?? false });
   }
 
   async mkdir(path: string, options?: { recursive?: boolean }): Promise<void> {

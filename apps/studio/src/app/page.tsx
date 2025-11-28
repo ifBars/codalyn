@@ -94,14 +94,6 @@ export default function LandingPage() {
           <SpinningLogo className="h-24 w-24" />
           <span>codalyn</span>
         </Link>
-        <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
-          <Link href="/projects" className="transition hover:text-foreground">
-            Projects
-          </Link>
-          <Link href="/builder" className="transition hover:text-foreground">
-            Builder
-          </Link>
-        </nav>
         <div className="flex items-center gap-4">
           <Link
             href="/projects"

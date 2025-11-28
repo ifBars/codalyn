@@ -1,16 +1,15 @@
 "use client";
 
-import type { FileOperation, GeminiModelId, OpenRouterModelId, BackendProvider } from "./ai";
+import type { FileOperation, AccuralAIModelId } from "./ai";
 import { defaultProjectFileMap } from "./project-template";
 
 const PROJECTS_KEY = "codalyn.projects.v1";
-const GEMINI_KEY = "codalyn.geminiKey.v1";
-const OPENROUTER_KEY = "codalyn.openrouterKey.v1";
 const CONTEXT7_KEY = "codalyn.context7Key.v1";
 const ACTIVE_PROJECT_KEY = "codalyn.activeProject.v1";
-const GEMINI_MODEL_KEY = "codalyn.geminiModel.v1";
-const OPENROUTER_MODEL_KEY = "codalyn.openrouterModel.v1";
-const BACKEND_PROVIDER_KEY = "codalyn.backendProvider.v1";
+const ACCURALAI_GOOGLE_KEY = "codalyn.accuralai.googleKey.v1";
+const ACCURALAI_OPENROUTER_KEY = "codalyn.accuralai.openrouterKey.v1";
+const ACCURALAI_ANTHROPIC_KEY = "codalyn.accuralai.anthropicKey.v1";
+const ACCURALAI_MODEL_KEY = "codalyn.accuralai.model.v1";
 
 export interface StoredProject {
   id: string;
@@ -187,24 +186,48 @@ export const applyFileOperationsToProject = (
   return cloneProject(project);
 };
 
-export const getStoredGeminiKey = (): string | null => {
-  return readStorage<string | null>(GEMINI_KEY, null);
+export const getStoredAccuralAIGoogleKey = (): string | null => {
+  return readStorage<string | null>(ACCURALAI_GOOGLE_KEY, null);
 };
 
-export const setStoredGeminiKey = (apiKey: string) => {
-  writeStorage(GEMINI_KEY, apiKey);
+export const setStoredAccuralAIGoogleKey = (apiKey: string) => {
+  writeStorage(ACCURALAI_GOOGLE_KEY, apiKey);
 };
 
-export const clearStoredGeminiKey = () => {
-  removeStorage(GEMINI_KEY);
+export const clearStoredAccuralAIGoogleKey = () => {
+  removeStorage(ACCURALAI_GOOGLE_KEY);
 };
 
-export const getPreferredGeminiModel = (): GeminiModelId | null => {
-  return readStorage<GeminiModelId | null>(GEMINI_MODEL_KEY, null);
+export const getStoredAccuralAIOpenRouterKey = (): string | null => {
+  return readStorage<string | null>(ACCURALAI_OPENROUTER_KEY, null);
 };
 
-export const setPreferredGeminiModel = (model: GeminiModelId) => {
-  writeStorage(GEMINI_MODEL_KEY, model);
+export const setStoredAccuralAIOpenRouterKey = (apiKey: string) => {
+  writeStorage(ACCURALAI_OPENROUTER_KEY, apiKey);
+};
+
+export const clearStoredAccuralAIOpenRouterKey = () => {
+  removeStorage(ACCURALAI_OPENROUTER_KEY);
+};
+
+export const getStoredAccuralAIAnthropicKey = (): string | null => {
+  return readStorage<string | null>(ACCURALAI_ANTHROPIC_KEY, null);
+};
+
+export const setStoredAccuralAIAnthropicKey = (apiKey: string) => {
+  writeStorage(ACCURALAI_ANTHROPIC_KEY, apiKey);
+};
+
+export const clearStoredAccuralAIAnthropicKey = () => {
+  removeStorage(ACCURALAI_ANTHROPIC_KEY);
+};
+
+export const getPreferredAccuralAIModel = (): AccuralAIModelId | null => {
+  return readStorage<AccuralAIModelId | null>(ACCURALAI_MODEL_KEY, null);
+};
+
+export const setPreferredAccuralAIModel = (model: AccuralAIModelId) => {
+  writeStorage(ACCURALAI_MODEL_KEY, model);
 };
 
 export const getStoredContext7Key = (): string | null => {
@@ -217,32 +240,4 @@ export const setStoredContext7Key = (apiKey: string) => {
 
 export const clearStoredContext7Key = () => {
   removeStorage(CONTEXT7_KEY);
-};
-
-export const getStoredOpenRouterKey = (): string | null => {
-  return readStorage<string | null>(OPENROUTER_KEY, null);
-};
-
-export const setStoredOpenRouterKey = (apiKey: string) => {
-  writeStorage(OPENROUTER_KEY, apiKey);
-};
-
-export const clearStoredOpenRouterKey = () => {
-  removeStorage(OPENROUTER_KEY);
-};
-
-export const getPreferredOpenRouterModel = (): OpenRouterModelId | null => {
-  return readStorage<OpenRouterModelId | null>(OPENROUTER_MODEL_KEY, null);
-};
-
-export const setPreferredOpenRouterModel = (model: OpenRouterModelId) => {
-  writeStorage(OPENROUTER_MODEL_KEY, model);
-};
-
-export const getPreferredBackend = (): BackendProvider | null => {
-  return readStorage<BackendProvider | null>(BACKEND_PROVIDER_KEY, null);
-};
-
-export const setPreferredBackend = (backend: BackendProvider) => {
-  writeStorage(BACKEND_PROVIDER_KEY, backend);
 };

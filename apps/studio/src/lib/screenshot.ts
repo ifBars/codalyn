@@ -271,11 +271,9 @@ async function captureViaDisplayMedia(
         frameRate: 30,
         width: window.screen.width * (window.devicePixelRatio || 1),
         height: window.screen.height * (window.devicePixelRatio || 1),
-        // @ts-expect-error - not yet in the TS lib but supported in Chromium
         preferCurrentTab: true,
-        // @ts-expect-error - Chromium specific constraint
         displaySurface: "browser",
-      },
+      } as MediaTrackConstraints,
     };
 
     stream = await navigator.mediaDevices.getDisplayMedia(constraints);

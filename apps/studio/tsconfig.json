@@ -23,7 +23,12 @@
       "@/components/*": ["./src/components/*"],
       "@/lib/*": ["./src/lib/*"],
       "@/app/*": ["./src/app/*"],
-      "@/server/*": ["./src/server/*"]
+      "@/server/*": ["./src/server/*"],
+      "@codalyn/accuralai": ["../../packages/accuralai/src"],
+      "@codalyn/shared": ["../../packages/shared/src"],
+      "@codalyn/runtime": ["../../packages/runtime/src"],
+      "@codalyn/sandbox": ["../../packages/sandbox/src"],
+      "@codalyn/tools": ["../../packages/tools/src"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],

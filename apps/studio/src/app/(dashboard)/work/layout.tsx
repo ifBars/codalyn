@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { getUser } from "@/lib/auth";
 import { ReactNode } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ export default async function WorkLayout({
 }: {
   children: ReactNode;
 }) {
-  const user = await requireAuth();
+  const user = await getUser();
 
   return (
     <div className="fixed inset-0 flex flex-col bg-background">
@@ -52,17 +52,31 @@ export default async function WorkLayout({
         </div>
 
         <div className="flex items-center gap-3">
-          <form action={signOutAction}>
-            <Button
-              type="submit"
-              variant="ghost"
-              size="sm"
-              className="rounded-full text-xs"
-            >
-              Logout
-            </Button>
-          </form>
-          <div className="h-6 w-6 rounded-full bg-primary/20 border border-primary/30" />
+          {user ? (
+            <>
+              <form action={signOutAction}>
+                <Button
+                  type="submit"
+                  variant="ghost"
+                  size="sm"
+                  className="rounded-full text-xs"
+                >
+                  Logout
+                </Button>
+              </form>
+              <div className="h-6 w-6 rounded-full bg-primary/20 border border-primary/30" />
+            </>
+          ) : (
+            <Link href="/auth/signin">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="rounded-full text-xs"
+              >
+                Sign In
+              </Button>
+            </Link>
+          )}
         </div>
       </header>
 

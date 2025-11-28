@@ -1,0 +1,85 @@
+{
+  "name": "@codalyn/accuralai",
+  "version": "0.1.0",
+  "description": "Unified TypeScript package for local LLM orchestration with MDAP sub-agent support",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.js"
+    },
+    "./backends/*": {
+      "types": "./dist/backends/*.d.ts",
+      "import": "./dist/backends/*.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src --ext .ts,.tsx",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "accuralai",
+    "llm",
+    "orchestration",
+    "ai",
+    "typescript",
+    "mdap",
+    "agents",
+    "react",
+    "anthropic",
+    "openai",
+    "ollama"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/accuralai/accuralai-typescript",
+    "directory": "packages/accuralai"
+  },
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@ai-sdk/anthropic": "^2.0.49",
+    "@ai-sdk/google": "^2.0.43",
+    "@ai-sdk/openai": "^2.0.73",
+    "@anthropic-ai/sdk": "^0.30.0",
+    "ai": "^5.0.102",
+    "better-sqlite3": "^11.8.1",
+    "nanoid": "^5.0.0",
+    "ollama-ai-provider-v2": "^1.5.5",
+    "openai": "^4.73.0",
+    "zod": "^3.25.76"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/node": "^20.10.0",
+    "@types/react": "^18.2.0",
+    "react": "^18.2.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^1.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

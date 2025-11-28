@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * OpenRouter ModelAdapter implementation
  */

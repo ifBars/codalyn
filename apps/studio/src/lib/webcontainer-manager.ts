@@ -18,6 +18,7 @@ export class WebContainerManager {
   private static isInitialized: boolean = false;
   private static errorCallback: ((error: string) => void) | null = null;
   private static currentProjectFilesHash: string | null = null;
+  private static currentProjectId: string | null = null;
 
   /**
    * Register a callback to be called when internal server errors are detected
@@ -44,22 +45,25 @@ export class WebContainerManager {
   /**
    * Initialize a new Vite + React + Tailwind project
    * @param savedFiles Optional saved project files to merge with template
+   * @param projectId Optional project ID to track which project is loaded
    */
-  static async initProject(savedFiles?: Record<string, string>): Promise<{
+  static async initProject(savedFiles?: Record<string, string>, projectId?: string): Promise<{
     container: WebContainer;
     url: string;
   }> {
     // Calculate hash of provided files to detect project changes
     const filesHash = savedFiles ? JSON.stringify(Object.keys(savedFiles).sort().map(k => `${k}:${savedFiles[k]?.substring(0, 100)}`)).substring(0, 200) : null;
-    const isDifferentProject = filesHash && filesHash !== this.currentProjectFilesHash;
+    const isDifferentProject = (filesHash && filesHash !== this.currentProjectFilesHash) ||
+      (projectId && projectId !== this.currentProjectId);
 
     // If already initialized but switching to a different project, replace files
     if (this.isInitialized && this.serverUrl && this.devProcess && isDifferentProject && savedFiles) {
-      console.log(`[init] Switching to different project, replacing files...`);
+      console.log(`[init] Switching to different project (ID: ${projectId}), replacing files...`);
       try {
         // Replace project files
         await this.replaceProjectFiles(savedFiles);
         this.currentProjectFilesHash = filesHash;
+        this.currentProjectId = projectId || null;
         const container = await this.getInstance();
         return { container, url: this.serverUrl };
       } catch (error) {
@@ -69,6 +73,7 @@ export class WebContainerManager {
         this.serverUrl = null;
         this.devProcess = null;
         this.currentProjectFilesHash = null;
+        this.currentProjectId = null;
       }
     }
 
@@ -91,6 +96,7 @@ export class WebContainerManager {
       const result = await this.initPromise;
       this.isInitialized = true;
       this.currentProjectFilesHash = filesHash;
+      this.currentProjectId = projectId || null;
       // Clear init promise after successful initialization
       this.initPromise = null;
       return result;
@@ -125,6 +131,7 @@ export class WebContainerManager {
       this.serverUrl = null;
       this.isInitialized = false; // Reset initialization state since we're starting fresh
       this.currentProjectFilesHash = null; // Reset project hash
+      this.currentProjectId = null; // Reset project ID
     }
 
     // Prepare files to mount - merge template with saved files if provided
