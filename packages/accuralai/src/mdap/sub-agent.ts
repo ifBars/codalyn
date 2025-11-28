@@ -140,7 +140,16 @@ export const SubAgentPresets = {
     role: 'code-generation',
     specialization: 'code-generation',
     capabilities: ['react', 'typescript', 'html', 'css', 'javascript'],
-    systemPrompt: 'You are an expert code generator specialized in React, TypeScript, and modern web development. Generate clean, production-ready code.',
+    systemPrompt: `You are an expert code generator specialized in React, TypeScript, and modern web development.
+
+CRITICAL: You have access to file operation tools. You MUST use them to create actual files:
+- Use write_file to create new files with code
+- Use read_file to check existing files
+- Use list_directory to see what files exist
+
+DO NOT just describe what files should be created. ACTUALLY CREATE THEM using the write_file tool.
+
+Generate clean, production-ready code and write it to files immediately.`,
     backend,
     priority: 8,
     temperature: 0.3,
@@ -155,7 +164,14 @@ export const SubAgentPresets = {
     role: 'testing',
     specialization: 'testing',
     capabilities: ['unit-tests', 'integration-tests', 'vitest', 'jest'],
-    systemPrompt: 'You are a testing specialist. Write comprehensive, meaningful tests with good coverage.',
+    systemPrompt: `You are a testing specialist. Write comprehensive, meaningful tests with good coverage.
+
+You have access to file operation tools. Use write_file to create:
+- Test files (.test.ts, .spec.ts)
+- Test fixtures and mocks
+- Test configuration
+
+Create actual test files, don't just describe them.`,
     backend,
     priority: 6,
     temperature: 0.2,
@@ -185,7 +201,14 @@ export const SubAgentPresets = {
     role: 'design',
     specialization: 'ui-design',
     capabilities: ['tailwind', 'css', 'responsive-design', 'accessibility'],
-    systemPrompt: 'You are a UI/UX designer expert in Tailwind CSS and modern design systems. Create beautiful, accessible interfaces.',
+    systemPrompt: `You are a UI/UX designer expert in Tailwind CSS and modern design systems.
+
+You have access to file operation tools. Use write_file to create:
+- CSS files with styling
+- Tailwind configuration
+- Component styles
+
+Create beautiful, accessible interfaces with actual files, not just descriptions.`,
     backend,
     priority: 5,
     temperature: 0.7,
@@ -200,7 +223,14 @@ export const SubAgentPresets = {
     role: 'architecture',
     specialization: 'architecture',
     capabilities: ['system-design', 'scalability', 'patterns'],
-    systemPrompt: 'You are a software architect. Design scalable, maintainable system architectures.',
+    systemPrompt: `You are a software architect. Design scalable, maintainable system architectures.
+
+You have access to file operation tools. Use write_file to create:
+- Configuration files (package.json, tsconfig.json, etc.)
+- Foundational structure files
+- Architecture documentation
+
+Create actual files, don't just describe them.`,
     backend,
     priority: 9,
     temperature: 0.5,
@@ -215,7 +245,14 @@ export const SubAgentPresets = {
     role: 'debugging',
     specialization: 'debugging',
     capabilities: ['error-analysis', 'troubleshooting', 'performance-profiling'],
-    systemPrompt: 'You are a debugging expert. Analyze errors, identify root causes, and suggest fixes.',
+    systemPrompt: `You are a debugging expert. Analyze errors, identify root causes, and fix them.
+
+You have access to file operation tools. Use them to:
+- Read files to understand the code
+- Write fixed versions of files
+- Check for syntax errors
+
+Don't just suggest fixes - MAKE THE FIXES using write_file.`,
     backend,
     priority: 10,
     temperature: 0.3,
