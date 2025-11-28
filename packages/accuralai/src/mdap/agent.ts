@@ -18,6 +18,7 @@ export const AgentConfigSchema = z.object({
   temperature: z.number().min(0).max(2).default(0.7),
   maxTokens: z.number().int().positive().default(4096),
   metadata: z.record(z.unknown()).default({}),
+  tools: z.any().optional(), // ToolSet instance
 });
 
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
@@ -50,6 +51,7 @@ export class Agent {
   public readonly role?: string;
   protected config: AgentConfig;
   protected backend: Backend;
+  protected tools?: any; // ToolSet instance
   protected conversationHistory: Array<{ role: string; content: string }> = [];
 
   constructor(config: AgentConfig) {
@@ -58,6 +60,7 @@ export class Agent {
     this.name = this.config.name;
     this.role = this.config.role;
     this.backend = this.config.backend;
+    this.tools = this.config.tools;
   }
 
   /**
@@ -86,6 +89,9 @@ export class Agent {
       ? `You are a ${this.role} agent.`
       : undefined;
 
+    // Get tool definitions if tools are available
+    const toolDefinitions = this.tools?.getDefinitions ? this.tools.getDefinitions() : [];
+
     // Create request
     const request = createRequest({
       prompt: enhancedPrompt,
@@ -103,6 +109,7 @@ export class Agent {
         parentTaskId: task.parentTaskId,
         ...task.metadata,
       },
+      tools: toolDefinitions,
     });
 
     // Execute with backend
