@@ -409,37 +409,6 @@ export const readLinesTool: ToolDefinition = {
 };
 
 /**
- * Bun script execution tool
- */
-export const bunRunTool: ToolDefinition = {
-  name: "bun_run",
-  description: "Run a Bun script from package.json. DO NOT use this to start dev servers (they are managed automatically).",
-  parameters: {
-    type: "object",
-    properties: {
-      script: {
-        type: "string",
-        description: "Script name from package.json to run (e.g., 'build', 'lint', 'type-check')",
-      },
-      args: {
-        type: "array",
-        items: { type: "string" },
-        description: "Additional arguments to pass to the script",
-      },
-      workspace: {
-        type: "string",
-        description: "Workspace name to run script in a specific workspace",
-      },
-      filter: {
-        type: "string",
-        description: "Filter pattern for workspaces (e.g., '@codalyn/*')",
-      },
-    },
-    required: ["script"],
-  },
-};
-
-/**
  * Git tools
  */
 export const gitStatusTool: ToolDefinition = {
@@ -781,6 +750,45 @@ export const envWriteTool: ToolDefinition = {
 };
 
 /**
+ * View MDAP plan artifacts
+ * Lists all plan artifacts in the plans directory
+ */
+export const viewPlansTool: ToolDefinition = {
+  name: "view_plans",
+  description: "View all MDAP execution plan artifacts. Lists all plan files in the plans directory. Use this to see what plans have been created and their details. You can then use read_file to read a specific plan.",
+  parameters: {
+    type: "object",
+    properties: {
+      limit: {
+        type: "number",
+        description: "Maximum number of plans to return (default: 10)",
+        default: 10,
+      },
+    },
+    required: [],
+  },
+};
+
+/**
+ * Delete an artifact (including plans)
+ * Deletes an artifact by its path or ID
+ */
+export const deleteArtifactTool: ToolDefinition = {
+  name: "delete_artifact",
+  description: "Delete an artifact (including plan artifacts) by its path. Use this to remove plans or other artifacts that are no longer needed.",
+  parameters: {
+    type: "object",
+    properties: {
+      path: {
+        type: "string",
+        description: "Path to the artifact file relative to workspace root (e.g., 'plans/plan-name.md')",
+      },
+    },
+    required: ["path"],
+  },
+};
+
+/**
  * Registry of all tools
  */
 export const toolRegistry: ToolDefinition[] = [
@@ -801,8 +809,6 @@ export const toolRegistry: ToolDefinition[] = [
   globSearchTool,
   findInFilesTool,
   searchProjectTool,
-  // Package management
-  bunRunTool,
   // Git
   gitStatusTool,
   gitBranchTool,
@@ -814,11 +820,6 @@ export const toolRegistry: ToolDefinition[] = [
   // Packages
   npmInstallTool,
   npmUninstallTool,
-  // Database
-  dbQueryTool,
-  dbInsertTool,
-  dbUpdateTool,
-  dbDeleteTool,
   // Sandbox
   sandboxInfoTool,
   portListTool,
@@ -827,5 +828,8 @@ export const toolRegistry: ToolDefinition[] = [
   projectInfoTool,
   envReadTool,
   envWriteTool,
+  // Artifacts
+  viewPlansTool,
+  deleteArtifactTool,
 ];
 

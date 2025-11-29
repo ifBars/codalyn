@@ -216,6 +216,7 @@ export function useSubAgents(config: UseSubAgentsConfig): UseSubAgentsReturn {
       taskTimeout: 300000,
       retryFailedTasks: true,
       maxRetries: 2,
+      generatePlanArtifact: true,
     });
   }, [getBackend, config.backendName]);
 

@@ -170,11 +170,39 @@ export default function BuilderPage() {
     setProjectError(null);
     setActiveProject(hydrated);
 
-    // Load plans from localStorage
+    // Load plans from localStorage with deduplication
     const storedPlans = getPlansFromLocalStorage(projectId);
-    setPlans(storedPlans);
-    if (storedPlans.length > 0 && !currentPlan) {
-      setCurrentPlan(storedPlans[0]);
+    // Deduplicate by ID, keeping the latest version
+    const planMap = new Map<string, Artifact>();
+    storedPlans.forEach(plan => {
+      const existing = planMap.get(plan.id);
+      if (!existing) {
+        planMap.set(plan.id, plan);
+      } else {
+        // Keep the one with the latest timestamp
+        const existingDate = existing.metadata?.updatedAt 
+          ? new Date(existing.metadata.updatedAt).getTime()
+          : existing.metadata?.createdAt 
+            ? new Date(existing.metadata.createdAt).getTime()
+            : 0;
+        const planDate = plan.metadata?.updatedAt
+          ? new Date(plan.metadata.updatedAt).getTime()
+          : plan.metadata?.createdAt
+            ? new Date(plan.metadata.createdAt).getTime()
+            : 0;
+        if (planDate > existingDate) {
+          planMap.set(plan.id, plan);
+        }
+      }
+    });
+    const deduplicatedPlans = Array.from(planMap.values()).sort((a, b) => {
+      const dateA = a.metadata?.createdAt ? new Date(a.metadata.createdAt).getTime() : 0;
+      const dateB = b.metadata?.createdAt ? new Date(b.metadata.createdAt).getTime() : 0;
+      return dateB - dateA; // Newest first
+    });
+    setPlans(deduplicatedPlans);
+    if (deduplicatedPlans.length > 0 && !currentPlan) {
+      setCurrentPlan(deduplicatedPlans[0]);
     }
   }, [projectId]);
 
@@ -384,7 +412,18 @@ export default function BuilderPage() {
   };
 
   const handleNewPlan = (plan: Artifact) => {
-    setPlans((prev) => [plan, ...prev]);
+    setPlans((prev) => {
+      // Deduplicate by ID, keeping the latest version
+      const planMap = new Map<string, Artifact>();
+      prev.forEach(p => planMap.set(p.id, p));
+      planMap.set(plan.id, plan); // New plan overwrites if exists
+      
+      return Array.from(planMap.values()).sort((a, b) => {
+        const dateA = a.metadata?.createdAt ? new Date(a.metadata.createdAt).getTime() : 0;
+        const dateB = b.metadata?.createdAt ? new Date(b.metadata.createdAt).getTime() : 0;
+        return dateB - dateA; // Newest first
+      });
+    });
     setCurrentPlan(plan);
     setShowPlans(true);
   };
@@ -392,7 +431,38 @@ export default function BuilderPage() {
   const handleNewArtifacts = (artifacts: Artifact[]) => {
     const planArtifacts = artifacts.filter((a) => a.type === "plan");
     if (planArtifacts.length > 0) {
-      setPlans((prev) => [...planArtifacts, ...prev]);
+      setPlans((prev) => {
+        // Deduplicate by ID, keeping the latest version
+        const planMap = new Map<string, Artifact>();
+        prev.forEach(p => planMap.set(p.id, p));
+        planArtifacts.forEach(plan => {
+          const existing = planMap.get(plan.id);
+          if (!existing) {
+            planMap.set(plan.id, plan);
+          } else {
+            // Keep the one with the latest timestamp
+            const existingDate = existing.metadata?.updatedAt 
+              ? new Date(existing.metadata.updatedAt).getTime()
+              : existing.metadata?.createdAt 
+                ? new Date(existing.metadata.createdAt).getTime()
+                : 0;
+            const planDate = plan.metadata?.updatedAt
+              ? new Date(plan.metadata.updatedAt).getTime()
+              : plan.metadata?.createdAt
+                ? new Date(plan.metadata.createdAt).getTime()
+                : 0;
+            if (planDate > existingDate) {
+              planMap.set(plan.id, plan);
+            }
+          }
+        });
+        
+        return Array.from(planMap.values()).sort((a, b) => {
+          const dateA = a.metadata?.createdAt ? new Date(a.metadata.createdAt).getTime() : 0;
+          const dateB = b.metadata?.createdAt ? new Date(b.metadata.createdAt).getTime() : 0;
+          return dateB - dateA; // Newest first
+        });
+      });
       setCurrentPlan(planArtifacts[0]);
     }
   };
@@ -688,6 +758,7 @@ export default function BuilderPage() {
           onNewArtifacts={handleNewArtifacts}
           googleApiKey={getStoredAccuralAIGoogleKey() || undefined}
           selectedModel={selectedModel}
+          plans={plans}
         />
 
         {showPlans && plans.length > 0 ? (
@@ -724,16 +795,6 @@ export default function BuilderPage() {
           </div>
         )}
 
-        {/* Toggle button for Plans */}
-        {plans.length > 0 && !showPlans && (
-          <button
-            onClick={() => setShowPlans(true)}
-            className="absolute right-4 top-20 z-10 flex items-center gap-2 rounded-lg border border-primary/50 bg-primary/10 px-3 py-2 text-xs font-medium text-primary shadow-lg transition hover:bg-primary/20"
-          >
-            <FileText className="h-4 w-4" />
-            <span>View Plans ({plans.length})</span>
-          </button>
-        )}
       </div>
 
       {isKeyModalOpen && (

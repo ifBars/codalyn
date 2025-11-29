@@ -17,6 +17,7 @@ export const AgentConfigSchema = z.object({
   backend: z.custom<Backend>(),
   temperature: z.number().min(0).max(2).default(0.7),
   maxTokens: z.number().int().positive().default(4096),
+  maxIterations: z.number().int().positive().optional().default(10),
   metadata: z.record(z.unknown()).default({}),
   tools: z.any().optional(), // ToolSet instance
 });
@@ -64,9 +65,11 @@ export class Agent {
   }
 
   /**
-   * Execute a task
+   * Execute a task with agentic tool call looping (Think -> Act -> Observe)
    */
   async execute(task: AgentTask): Promise<AgentResult> {
+    console.log(`[MDAP Agent ${this.id}] Starting execution for task ${task.id}`);
+
     // Build enhanced prompt with context and artifacts
     let enhancedPrompt = task.prompt;
 
@@ -91,46 +94,181 @@ export class Agent {
 
     // Get tool definitions if tools are available
     const toolDefinitions = this.tools?.getDefinitions ? this.tools.getDefinitions() : [];
+    const hasTools = toolDefinitions.length > 0;
+    console.log(`[MDAP Agent ${this.id}] Has ${toolDefinitions.length} tools available`);
 
-    // Create request
-    const request = createRequest({
-      prompt: enhancedPrompt,
-      systemPrompt,
-      history: this.conversationHistory,
-      parameters: {
-        temperature: this.config.temperature,
-        maxTokens: this.config.maxTokens,
-      },
-      metadata: {
-        agentId: this.id,
-        agentName: this.name,
-        agentRole: this.role,
-        taskId: task.id,
-        parentTaskId: task.parentTaskId,
-        ...task.metadata,
-      },
-      tools: toolDefinitions,
-    });
+    // Add initial user message to conversation history
+    this.conversationHistory.push({ role: 'user', content: enhancedPrompt });
 
-    // Execute with backend
-    const response = await this.backend.generate(request, { routedTo: this.id });
+    let iteration = 0;
+    const maxIterations = this.config.maxIterations || 10;
+    let finalResponse: GenerateResponse | null = null;
+    let accumulatedOutput = '';
 
-    // Update conversation history
-    this.conversationHistory.push(
-      { role: 'user', content: enhancedPrompt },
-      { role: 'assistant', content: response.outputText }
-    );
+    // Agentic loop: Think -> Act -> Observe
+    while (iteration < maxIterations) {
+      iteration++;
+      console.log(`[MDAP Agent ${this.id}] Iteration ${iteration}/${maxIterations}`);
+
+      // Create request with current conversation history
+      const request = createRequest({
+        prompt: '', // Prompt is already in history
+        systemPrompt,
+        history: this.conversationHistory,
+        parameters: {
+          temperature: this.config.temperature,
+          maxTokens: this.config.maxTokens,
+        },
+        metadata: {
+          agentId: this.id,
+          agentName: this.name,
+          agentRole: this.role,
+          taskId: task.id,
+          parentTaskId: task.parentTaskId,
+          iteration,
+          ...task.metadata,
+        },
+        tools: hasTools ? toolDefinitions : [],
+      });
+
+      // THINK: Generate response from backend
+      console.log(`[MDAP Agent ${this.id}] Calling backend...`);
+      const response = await this.backend.generate(request, { routedTo: this.id });
+      finalResponse = response;
+
+      console.log(`[MDAP Agent ${this.id}] Response received:`, {
+        outputText: response.outputText.substring(0, 100) + '...',
+        finishReason: response.finishReason,
+        hasToolCalls: !!response.toolCalls?.length,
+        toolCallCount: response.toolCalls?.length || 0,
+      });
+
+      // Accumulate output text
+      if (response.outputText) {
+        accumulatedOutput += (accumulatedOutput ? '\n\n' : '') + response.outputText;
+      }
+
+      // Check for tool calls
+      if (!response.toolCalls || response.toolCalls.length === 0) {
+        console.log(`[MDAP Agent ${this.id}] No tool calls - execution complete`);
+
+        // Add final assistant message to history
+        this.conversationHistory.push({
+          role: 'assistant',
+          content: response.outputText,
+        });
+
+        break;
+      }
+
+      // ACT: Execute tool calls
+      console.log(`[MDAP Agent ${this.id}] Executing ${response.toolCalls.length} tool call(s)...`);
+
+      if (!this.tools) {
+        console.warn(`[MDAP Agent ${this.id}] Tool calls requested but no ToolSet configured`);
+        // Add assistant message and break
+        this.conversationHistory.push({
+          role: 'assistant',
+          content: response.outputText,
+        });
+        break;
+      }
+
+      const toolResults: Array<{
+        toolCallId?: string;
+        name: string;
+        result: any;
+        error?: string;
+        success: boolean;
+      }> = [];
+
+      for (const toolCall of response.toolCalls) {
+        console.log(`[MDAP Agent ${this.id}] Executing tool: ${toolCall.name}`);
+
+        try {
+          // Parse arguments if they're a string
+          const args = typeof toolCall.arguments === 'string'
+            ? JSON.parse(toolCall.arguments)
+            : toolCall.arguments;
+
+          // Execute tool using ToolSet
+          const result = await this.tools.execute({
+            id: toolCall.id,
+            name: toolCall.name,
+            args,
+          });
+
+          toolResults.push({
+            toolCallId: toolCall.id,
+            name: toolCall.name,
+            result: result.result,
+            error: result.error,
+            success: result.success,
+          });
+
+          console.log(`[MDAP Agent ${this.id}] Tool ${toolCall.name} executed:`, {
+            success: result.success,
+            error: result.error,
+          });
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.error(`[MDAP Agent ${this.id}] Tool ${toolCall.name} failed:`, errorMessage);
+
+          toolResults.push({
+            toolCallId: toolCall.id,
+            name: toolCall.name,
+            result: null,
+            error: errorMessage,
+            success: false,
+          });
+        }
+      }
+
+      // OBSERVE: Add assistant message with tool calls to history
+      this.conversationHistory.push({
+        role: 'assistant',
+        content: response.outputText,
+        toolCalls: response.toolCalls.map(tc => ({
+          id: tc.id,
+          name: tc.name,
+          arguments: typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.arguments),
+        })),
+      } as any);
+
+      // Add tool results to history
+      this.conversationHistory.push({
+        role: 'tool',
+        toolResults: toolResults.map(tr => ({
+          toolCallId: tr.toolCallId,
+          name: tr.name,
+          content: tr.success
+            ? (typeof tr.result === 'string' ? tr.result : JSON.stringify(tr.result))
+            : `Error: ${tr.error}`,
+        })),
+      } as any);
+
+      console.log(`[MDAP Agent ${this.id}] Tool results added to conversation history`);
+
+      // Continue to next iteration
+    }
+
+    if (iteration >= maxIterations) {
+      console.warn(`[MDAP Agent ${this.id}] Max iterations (${maxIterations}) reached`);
+    }
+
+    console.log(`[MDAP Agent ${this.id}] Execution complete after ${iteration} iteration(s)`);
 
     // Return result (artifacts will be added by subclasses or orchestrator)
     return {
       taskId: task.id,
       agentId: this.id,
-      output: response.outputText,
-      response,
+      output: accumulatedOutput || (finalResponse?.outputText || ''),
+      response: finalResponse!,
       artifacts: [],
       metadata: {
         role: this.role,
         name: this.name,
+        iterations: iteration,
         ...task.metadata,
       },
     };

@@ -6,6 +6,7 @@
 
 import { getUser } from "@/lib/auth";
 import { createAgent, AgentEvent, ConversationMemory, getDefaultSystemPrompt } from "@/lib/ai";
+import type { AccuralAIModelId } from "@/lib/ai";
 import { createBuilderMdapOrchestrator } from "@/lib/ai/mdap";
 import { SandboxManager } from "@codalyn/sandbox";
 import { db } from "@/lib/db";
@@ -308,8 +309,16 @@ export async function chatWithMDAP(
 
   // Create MDAP orchestrator
   console.log("[MDAP Debug] Creating MDAP orchestrator...");
+  const modelName: AccuralAIModelId =
+    accuralaiConfig.modelName === "gemini-2.5-flash-lite"
+      ? "google:gemini-2.5-flash-lite"
+      : accuralaiConfig.modelName === "gemini-2.5-pro"
+      ? "google:gemini-2.5-pro"
+      : accuralaiConfig.modelName === "gemini-flash-latest"
+      ? "google:gemini-flash-latest"
+      : "google:gemini-2.5-flash";
   const orchestrator = createBuilderMdapOrchestrator({
-    modelName: `google:${accuralaiConfig.modelName}`,
+    modelName,
     googleApiKey: accuralaiConfig.googleApiKey,
     maxParallelTasks: 3,
     maxRetries: 2,

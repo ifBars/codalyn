@@ -37,7 +37,6 @@ export function getDefaultSystemPrompt(): string {
 
 **MANDATORY TOOL USAGE**:
 - ALWAYS use tools for operations - NEVER output code in text
-- Every action request MUST include tool calls
 - Text responses explain what you're doing, not how to do it
 
 **FORBIDDEN**:
@@ -64,15 +63,6 @@ export function getDefaultSystemPrompt(): string {
   - tokens: Maximum tokens to fetch (default: 5000)
   - version: Optional specific version (e.g., 'v15.1.8')
 
-**CRITICAL**: Always use Context7 tools to get up-to-date documentation when working with external libraries, frameworks, or packages. Never rely on outdated knowledge or assumptions about APIs, syntax, or best practices. If you're unsure about:
-- Library APIs or methods
-- Framework features or patterns
-- Package usage or configuration
-- Version-specific changes or breaking changes
-- Best practices or recommended approaches
-
-Then you MUST use context7_resolve_library followed by context7_get_docs to fetch the latest, accurate documentation before implementing code.
-
 **File Operations**:
 - write_file(path, content) - Create/modify files (provide COMPLETE file content)
 - delete_path(path) - Remove files/directories
@@ -81,7 +71,6 @@ Then you MUST use context7_resolve_library followed by context7_get_docs to fetc
 
 **Dependencies**:
 - npm_install(packages[], dev=false) - Install npm packages
-- bun_run(script, args[], workspace?, filter?) - Run Bun scripts (DO NOT use for 'dev' or 'start' - dev server is managed automatically)
 
 ## DEV SERVER & HOT RELOAD
 
@@ -93,7 +82,6 @@ Then you MUST use context7_resolve_library followed by context7_get_docs to fetc
 **After writing files**:
 - Changes are automatically detected and the preview updates
 - Use capture_screenshot to verify changes if needed
-- No need to run any commands to see your changes
 
 ## STANDARD WORKFLOW
 

@@ -5,7 +5,7 @@
  * Google Gemini, and Ollama (community provider) behind one backend.
  */
 
-import { createProviderRegistry, generateText, jsonSchema } from 'ai';
+import { createProviderRegistry, generateText, jsonSchema, tool } from 'ai';
 import { anthropic, createAnthropic } from '@ai-sdk/anthropic';
 import { google, createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAI, openai as defaultOpenAI } from '@ai-sdk/openai';
@@ -22,6 +22,10 @@ export const VercelAIBackendConfigSchema = z.object({
   anthropic: z.record(z.unknown()).optional(),
   google: z.record(z.unknown()).optional(),
   ollama: z.record(z.unknown()).optional(),
+  /**
+   * Minimum delay between provider requests (ms). Requests are queued to avoid 429s.
+   */
+  rateLimitMs: z.number().int().positive().default(500),
 });
 
 export type VercelAIBackendConfig = z.infer<typeof VercelAIBackendConfigSchema>;
@@ -31,10 +35,13 @@ type ProviderRegistry = ReturnType<typeof createProviderRegistry>;
 export class VercelAIBackend implements Backend {
   private config: VercelAIBackendConfig;
   private registry: ProviderRegistry;
+  private requestQueue: Promise<unknown>;
+  private lastRequestTime = 0;
 
   constructor(config?: Partial<VercelAIBackendConfig>) {
     this.config = VercelAIBackendConfigSchema.parse(config || {});
     this.registry = this.createRegistry();
+    this.requestQueue = Promise.resolve();
   }
 
   private createRegistry(): ProviderRegistry {
@@ -66,6 +73,7 @@ export class VercelAIBackend implements Backend {
     request: GenerateRequest,
     options: { routedTo: string }
   ): Promise<GenerateResponse> {
+    return this.enqueue(async () => {
     const start = Date.now();
     const modelId = this.resolveModelId(request);
     const provider = modelId.split(this.config.separator)[0] || 'unknown';
@@ -73,25 +81,18 @@ export class VercelAIBackend implements Backend {
     console.log(`[AI Debug] VercelAIBackend.generate() - Provider: ${provider}, Model: ${modelId}`);
     console.log(`[AI Debug] Config keys: ${JSON.stringify(Object.keys(this.config))}`);
     console.log(`[AI Debug] Has Google config: ${this.config.google !== undefined}`);
+    console.log(`[AI Debug] Rate limit (ms between requests): ${this.config.rateLimitMs}`);
 
     try {
       const messages = this.buildMessages(request);
       console.log(`[AI Debug] Built ${messages.length} messages for model`);
 
       // Log tool names for debugging
-      const toolsForModel = this.prepareTools(request.tools);
-      if (toolsForModel.length > 0) {
-        console.log(`[AI Debug] Sending ${toolsForModel.length} tools to model`);
-        const toolNames = toolsForModel.slice(0, 5).map((t: any) => t.name);
-        console.log(`[AI Debug] First 5 tool names:`, toolNames);
-        console.log(
-          `[AI Debug] First tool full structure:`,
-          JSON.stringify(toolsForModel[0], null, 2)
-        );
-
+      const { toolset: toolsForModel, debugTools } = this.prepareTools(request.tools);
+      const toolEntries = Object.entries(toolsForModel);
+      if (toolEntries.length > 0) {
         // Check for invalid tool names according to Google's requirements
-        const invalidTools = toolsForModel.filter((t: any) => {
-          const name = t.name as string;
+        const invalidTools = toolEntries.filter(([name]) => {
           // Must start with letter or underscore
           if (!/^[a-zA-Z_]/.test(name)) return true;
           // Must be alphanumeric (a-z, A-Z, 0-9), underscores (_), dots (.), colons (:), or dashes (-)
@@ -103,7 +104,7 @@ export class VercelAIBackend implements Backend {
 
         if (invalidTools.length > 0) {
           console.warn(`[AI Debug] Found ${invalidTools.length} tools with invalid names for Google:`,
-            invalidTools.map((t: any) => t.name));
+            invalidTools.map(([name]) => name));
         }
       }
 
@@ -113,7 +114,7 @@ export class VercelAIBackend implements Backend {
       const result = await generateText({
         model,
         messages,
-        tools: toolsForModel.length > 0 ? (toolsForModel as any) : undefined,
+        tools: toolEntries.length > 0 ? (toolsForModel as any) : undefined,
         temperature: this.pickNumber(request.parameters, ['temperature']),
         maxTokens: this.pickNumber(request.parameters, ['maxTokens', 'max_tokens']),
         topP: this.pickNumber(request.parameters, ['topP', 'top_p']),
@@ -124,10 +125,27 @@ export class VercelAIBackend implements Backend {
       const latencyMs = Date.now() - start;
       const usage = result.usage || {};
 
+      // Extract tool calls from result
+      const toolCalls = (result as any).toolCalls
+        ? (result as any).toolCalls.map((tc: any) => {
+            const rawArgs = tc.args ?? tc.arguments ?? tc.input;
+            const normalizedArgs =
+              rawArgs === undefined ? {} : typeof rawArgs === 'string' ? rawArgs : rawArgs;
+
+            return {
+              id: tc.toolCallId || tc.id,
+              name: tc.toolName || tc.name,
+              arguments: normalizedArgs,
+            };
+          })
+        : undefined;
+
+      const finishReason = this.mapFinishReason(result.finishReason);
+
       return createResponse({
         requestId: request.id,
         outputText: result.text || '',
-        finishReason: this.mapFinishReason(result.finishReason),
+        finishReason: toolCalls && toolCalls.length > 0 ? 'tool_calls' : finishReason,
         usage: {
           promptTokens: (usage as any).promptTokens || 0,
           completionTokens: (usage as any).completionTokens || 0,
@@ -135,6 +153,7 @@ export class VercelAIBackend implements Backend {
           extra: {},
         },
         latencyMs,
+        toolCalls,
         metadata: {
           backend: 'vercel-ai',
           provider,
@@ -171,6 +190,7 @@ export class VercelAIBackend implements Backend {
         },
       });
     }
+    });
   }
 
   private resolveModelId(request: GenerateRequest): string {
@@ -197,14 +217,24 @@ export class VercelAIBackend implements Backend {
     }
 
     for (const msg of request.history || []) {
-      const role =
-        (typeof (msg as any).role === 'string'
-          ? ((msg as any).role as 'system' | 'user' | 'assistant')
-          : 'user') || 'user';
+      const rawRole = typeof (msg as any).role === 'string' ? (msg as any).role : 'user';
+      let role: 'system' | 'user' | 'assistant' = 'user';
+      if (rawRole === 'system' || rawRole === 'assistant' || rawRole === 'user') {
+        role = rawRole;
+      } else if (rawRole === 'tool') {
+        // Gemini only accepts system|user|assistant; collapse tool messages into assistant text
+        role = 'assistant';
+      }
+
       const content =
         typeof (msg as any).content === 'string'
           ? ((msg as any).content as string)
-          : JSON.stringify(msg);
+          : JSON.stringify((msg as any).content ?? msg);
+
+      // Skip empty content messages
+      if (!content || content.trim().length === 0) {
+        continue;
+      }
 
       messages.push({ role, content });
     }
@@ -254,10 +284,23 @@ export class VercelAIBackend implements Backend {
    * Convert Codalyn tool definitions into the format expected by Vercel AI SDK.
    * Ensures names meet Google Gemini requirements and uses function tools with JSON Schema input.
    */
-  private prepareTools(tools: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
-    return (tools || []).map(raw => {
+  private prepareTools(tools: Array<Record<string, unknown>>): {
+    toolset: Record<string, unknown>;
+    debugTools: Array<Record<string, unknown>>;
+  } {
+    const toolset: Record<string, unknown> = {};
+    const debugTools: Array<Record<string, unknown>> = [];
+
+    for (const raw of tools || []) {
       const name = typeof raw.name === 'string' ? raw.name : 'tool';
       const sanitizedName = this.sanitizeToolName(name);
+
+      if (toolset[sanitizedName]) {
+        console.warn(
+          `[AI Debug] Duplicate tool name '${sanitizedName}' detected. Skipping subsequent definition.`
+        );
+        continue;
+      }
 
       if (sanitizedName !== name) {
         console.warn(
@@ -267,13 +310,81 @@ export class VercelAIBackend implements Backend {
 
       const parameters = (raw as any).parameters || (raw as any).inputSchema;
 
-      return {
-        type: 'function',
+      // Sanitize parameter schema for Google Gemini compatibility
+      const sanitizedParameters = this.sanitizeParameterSchema(parameters);
+
+      // Store human-readable debug info before tool() wraps schemas
+      debugTools.push({
         name: sanitizedName,
         description: (raw as any).description,
-        inputSchema: parameters ? jsonSchema(parameters as any) : jsonSchema({ type: 'object' }),
-      };
-    });
+        parameters: sanitizedParameters,
+      });
+
+      toolset[sanitizedName] = tool({
+        description: (raw as any).description,
+        inputSchema: sanitizedParameters ? jsonSchema(sanitizedParameters as any) : jsonSchema({ type: 'object' }),
+      });
+    }
+
+    return { toolset, debugTools };
+  }
+
+  /**
+   * Sanitize parameter schema to ensure Google Gemini compatibility.
+   * Fixes common issues with required fields and array item schemas.
+   */
+  private sanitizeParameterSchema(schema: any): any {
+    const normalize = (node: any): any => {
+      if (!node || typeof node !== 'object') {
+        return { type: 'object', properties: {}, required: [] };
+      }
+
+      const clone: any = { ...node };
+      clone.type = clone.type || 'object';
+
+      // Ensure properties object
+      if (!clone.properties || typeof clone.properties !== 'object') {
+        clone.properties = {};
+      }
+
+      // Sanitize nested property schemas
+      for (const [propName, propDef] of Object.entries(clone.properties)) {
+        if (!propDef || typeof propDef !== 'object') continue;
+
+        // Handle arrays
+        if ((propDef as any).type === 'array') {
+          const arrDef: any = { ...propDef };
+          const items = typeof arrDef.items === 'object' ? { ...arrDef.items } : {};
+          if (!items.type) {
+            items.type = 'object';
+          }
+          if (items.type === 'object') {
+            items.properties = items.properties && typeof items.properties === 'object' ? items.properties : {};
+            if (Array.isArray(items.required)) {
+              items.required = items.required.filter((req: string) => items.properties[req] !== undefined);
+            }
+          }
+          arrDef.items = items;
+          clone.properties[propName] = arrDef;
+          continue;
+        }
+
+        // Handle objects
+        if ((propDef as any).type === 'object') {
+          clone.properties[propName] = normalize(propDef);
+          continue;
+        }
+      }
+
+      // Filter required keys to those that exist
+      if (Array.isArray(clone.required)) {
+        clone.required = clone.required.filter((prop: string) => clone.properties[prop] !== undefined);
+      }
+
+      return clone;
+    };
+
+    return normalize(schema);
   }
 
   /**
@@ -289,6 +400,31 @@ export class VercelAIBackend implements Backend {
       sanitized = sanitized.slice(0, 64);
     }
     return sanitized;
+  }
+
+  /**
+   * Queue requests to enforce a minimum delay between provider calls.
+   * Prevents 429s by serializing calls with a configurable gap.
+   */
+  private enqueue<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.requestQueue.then(async () => {
+      const now = Date.now();
+      const elapsed = now - this.lastRequestTime;
+      const waitMs = Math.max(0, this.config.rateLimitMs - elapsed);
+      if (waitMs > 0) {
+        await new Promise(resolve => setTimeout(resolve, waitMs));
+      }
+      this.lastRequestTime = Date.now();
+      return fn();
+    });
+
+    // Ensure queue continues even if a request throws
+    this.requestQueue = run.then(
+      () => undefined,
+      () => undefined
+    );
+
+    return run;
   }
 }
 

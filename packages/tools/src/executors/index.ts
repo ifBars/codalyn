@@ -20,7 +20,6 @@ import { globSearchExecutor } from "./filesystem/glob_search";
 import { deletePathExecutor } from "./filesystem/delete_path";
 
 // Package management executors
-import { bunRunExecutor } from "./package-management/bun_run";
 import { npmInstallExecutor } from "./package-management/npm_install";
 import { npmUninstallExecutor } from "./package-management/npm_uninstall";
 
@@ -40,6 +39,8 @@ import { gitRevertExecutor } from "./git/git_revert";
 import { envReadExecutor } from "./metadata/env_read";
 import { envWriteExecutor } from "./metadata/env_write";
 import { projectInfoExecutor } from "./metadata/project_info";
+import { viewPlansExecutor } from "./metadata/view_plans";
+import { deleteArtifactExecutor } from "./metadata/delete_artifact";
 
 // Sandbox executors
 import { sandboxInfoExecutor } from "./sandbox/sandbox_info";
@@ -76,7 +77,6 @@ export const executorRegistry: Map<string, ToolExecutor> = new Map([
   ["glob_search", globSearchExecutor],
   ["delete_path", deletePathExecutor],
   // Package management
-  ["bun_run", bunRunExecutor],
   ["npm_install", npmInstallExecutor],
   ["npm_uninstall", npmUninstallExecutor],
   // Search
@@ -93,6 +93,8 @@ export const executorRegistry: Map<string, ToolExecutor> = new Map([
   ["env_read", envReadExecutor],
   ["env_write", envWriteExecutor],
   ["project_info", projectInfoExecutor],
+  ["view_plans", viewPlansExecutor],
+  ["delete_artifact", deleteArtifactExecutor],
   // Sandbox
   ["sandbox_info", sandboxInfoExecutor],
   ["port_list", portListExecutor],

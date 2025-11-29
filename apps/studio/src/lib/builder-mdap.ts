@@ -5,11 +5,12 @@
 
 import { createBuilderMdapOrchestrator } from "./ai/mdap";
 import type { Artifact, OrchestratorResult } from "@codalyn/accuralai";
+import type { AccuralAIModelId } from "./ai/core/types";
 import type { MdapProgressUpdate } from "@/components/builder/mdap-progress";
 
 export interface BuilderMdapConfig {
   googleApiKey: string;
-  modelName?: string;
+  modelName?: AccuralAIModelId;
   onProgress?: (update: MdapProgressUpdate) => void;
 }
 
@@ -25,8 +26,10 @@ export async function executeMdapInBrowser(
 
   console.log("[Builder MDAP] Creating orchestrator...");
 
+  const modelName: AccuralAIModelId = config.modelName ?? "google:gemini-2.5-flash";
+
   const orchestrator = createBuilderMdapOrchestrator({
-    modelName: config.modelName || "google:gemini-2.5-flash",
+    modelName,
     googleApiKey: config.googleApiKey,
     maxParallelTasks: 2,
     maxRetries: 1,
@@ -69,12 +72,10 @@ export async function executeMdapInBrowser(
         const allCompleted = executions.length > 0 && executions.every(e => e.status === "completed" || e.status === "failed");
 
         // Determine stage based on agent roles
-        const qaAgentActive = executions.some(e =>
-          e.status === "running" && (e.agentId === "qa-agent" || (routerStats.agentLoads?.["qa-agent"] ?? 0) > 0)
-        );
-        const finalizerActive = executions.some(e =>
-          e.status === "running" && (e.agentId === "finalizer" || (routerStats.agentLoads?.["finalizer"] ?? 0) > 0)
-        );
+        const qaAgentLoad = routerStats.agents.find(a => a.id === "qa-agent")?.load.active ?? 0;
+        const finalizerLoad = routerStats.agents.find(a => a.id === "finalizer")?.load.active ?? 0;
+        const qaAgentActive = executions.some(e => e.status === "running" && e.agentId === "qa-agent") || qaAgentLoad > 0;
+        const finalizerActive = executions.some(e => e.status === "running" && e.agentId === "finalizer") || finalizerLoad > 0;
 
         if (finalizerActive) {
           currentStage = "finalizing";
@@ -316,6 +317,30 @@ export function getArtifactsFromLocalStorage(projectId: string): Artifact[] {
 export function getPlansFromLocalStorage(projectId: string): Artifact[] {
   const artifacts = getArtifactsFromLocalStorage(projectId);
   return artifacts.filter((a) => a.type === "plan");
+}
+
+/**
+ * Delete a specific artifact by ID from localStorage
+ */
+export function deleteArtifactFromLocalStorage(projectId: string, artifactId: string): boolean {
+  const storageKey = `codalyn.mdap.artifacts.${projectId}`;
+
+  try {
+    const artifacts = getArtifactsFromLocalStorage(projectId);
+    const filtered = artifacts.filter(a => a.id !== artifactId);
+    
+    if (filtered.length === artifacts.length) {
+      // Artifact not found
+      return false;
+    }
+
+    localStorage.setItem(storageKey, JSON.stringify(filtered));
+    console.log(`[Builder MDAP] Deleted artifact ${artifactId} from localStorage`);
+    return true;
+  } catch (error) {
+    console.error("[Builder MDAP] Failed to delete artifact:", error);
+    return false;
+  }
 }
 
 /**

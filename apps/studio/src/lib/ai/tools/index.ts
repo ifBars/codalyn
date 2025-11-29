@@ -18,10 +18,11 @@ export class CodalynToolSet implements ToolSet {
         // - search_project: handled by VectorStoreToolSet
         // - context7_get_docs, context7_resolve_library: handled by Context7ToolSet
         return toolRegistry
-            .filter((tool) => 
+            .filter((tool) =>
                 tool.name !== "search_project" &&
                 tool.name !== "context7_get_docs" &&
-                tool.name !== "context7_resolve_library"
+                tool.name !== "context7_resolve_library" &&
+                getExecutor(tool.name) !== undefined
             )
             .map((tool) => ({
                 name: tool.name,

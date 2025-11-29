@@ -5,8 +5,9 @@ import {
   SubAgent,
   SubAgentPresets,
   createAgent as createMdapAgent,
+  createVercelAIBackend,
+  type Artifact,
 } from "@codalyn/accuralai";
-import { createVercelAIBackend } from "@codalyn/accuralai";
 import type { AccuralAIModelId } from "./core/types";
 import { WebContainerSandbox } from "./sandbox/webcontainer-sandbox";
 import { CodalynToolSet } from "./tools";
@@ -51,6 +52,28 @@ export function createBuilderMdapOrchestrator(config: MdapOrchestratorConfig): M
   const codalynTools = new CodalynToolSet(sandbox);
   const browserTools = new BrowserToolSet();
   const tools = new CompositeToolSet([codalynTools, browserTools]);
+  // Ensure plans directory exists for artifact persistence
+  sandbox.mkdir("plans", { recursive: true }).catch(() => {});
+
+  const artifactSink = async (artifact: Artifact) => {
+    try {
+      const pathParts = artifact.path.split("/");
+      pathParts.pop(); // remove filename
+      let dir = "";
+      for (const part of pathParts) {
+        if (!part) continue;
+        dir = dir ? `${dir}/${part}` : part;
+        try {
+          await sandbox.mkdir(dir, { recursive: true });
+        } catch (err) {
+          // ignore mkdir errors (likely already exists)
+        }
+      }
+      await sandbox.writeFile(artifact.path, artifact.content);
+    } catch (error) {
+      console.warn("[Builder MDAP] Failed to persist artifact to sandbox:", error);
+    }
+  };
 
   // Core sub-agents with QA and Finalizer for proper MDAP workflow
   // Following the Aurelius pattern: specialized agents + mandatory QA + Finalizer
@@ -93,6 +116,7 @@ export function createBuilderMdapOrchestrator(config: MdapOrchestratorConfig): M
       "You are a planning agent that decomposes complex web-app builder tasks into atomic subtasks.",
     temperature: 0.2,
     maxTokens: 1024,
+    maxIterations: 10,
   });
 
   return new MDAPOrchestrator({
@@ -103,5 +127,6 @@ export function createBuilderMdapOrchestrator(config: MdapOrchestratorConfig): M
     maxRetries: config.maxRetries ?? 1,
     retryFailedTasks: true,
     generatePlanArtifact: true, // Generate markdown plan for studio viewing
+    artifactSink,
   });
 }

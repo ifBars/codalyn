@@ -12,7 +12,9 @@ export const SubAgentConfigSchema = z.object({
   maxConcurrentTasks: z.number().int().positive().default(1),
 });
 
-export type SubAgentConfig = z.infer<typeof SubAgentConfigSchema> & AgentConfig;
+export type SubAgentConfig = z.infer<typeof SubAgentConfigSchema> &
+  Omit<AgentConfig, 'id' | 'metadata' | 'temperature' | 'maxTokens' | 'maxIterations'> &
+  Partial<Pick<AgentConfig, 'id' | 'metadata' | 'temperature' | 'maxTokens' | 'maxIterations'>>;
 
 export interface SubAgentCapability {
   name: string;
@@ -29,7 +31,9 @@ export class SubAgent extends Agent {
   private activeTasks: Set<string> = new Set();
 
   constructor(config: SubAgentConfig) {
-    super(config);
+    // Cast to AgentConfig since SubAgentConfig includes all required AgentConfig fields
+    // and the parent constructor will parse and fill defaults via AgentConfigSchema
+    super(config as AgentConfig);
 
     const subConfig = SubAgentConfigSchema.parse(config);
     this.specialization = subConfig.specialization;
@@ -146,6 +150,9 @@ CRITICAL: You have access to file operation tools. You MUST use them to create a
 - Use write_file to create new files with code
 - Use read_file to check existing files
 - Use list_directory to see what files exist
+- For small edits, prefer replace_in_file, append_to_file, or insert_at_line instead of rewriting whole files.
+
+Follow the architect's plan exactly. Do NOT change or extend the plan—implement it in code. If the plan is unclear, note assumptions briefly and continue coding.
 
 DO NOT just describe what files should be created. ACTUALLY CREATE THEM using the write_file tool.
 
@@ -170,6 +177,7 @@ You have access to file operation tools. Use write_file to create:
 - Test files (.test.ts, .spec.ts)
 - Test fixtures and mocks
 - Test configuration
+Implement tests for the planned work only; do not change the plan. Use replace_in_file/append_to_file for incremental additions.
 
 Create actual test files, don't just describe them.`,
     backend,
@@ -186,7 +194,7 @@ Create actual test files, don't just describe them.`,
     role: 'code-review',
     specialization: 'code-review',
     capabilities: ['security', 'performance', 'best-practices'],
-    systemPrompt: 'You are a senior code reviewer. Identify bugs, security issues, and suggest improvements.',
+    systemPrompt: `You are a senior code reviewer. Identify bugs, security issues, and suggest improvements. Do NOT implement new features or alter the plan—only review and recommend precise fixes. If changes are needed, provide targeted instructions (prefer replace_in_file/append_to_file/insert_at_line).`,
     backend,
     priority: 7,
     temperature: 0.4,
@@ -207,6 +215,7 @@ You have access to file operation tools. Use write_file to create:
 - CSS files with styling
 - Tailwind configuration
 - Component styles
+- For incremental tweaks, prefer replace_in_file, append_to_file, or insert_at_line instead of overwriting entire files. Always read_file first to understand context.
 
 Create beautiful, accessible interfaces with actual files, not just descriptions.`,
     backend,
@@ -223,14 +232,15 @@ Create beautiful, accessible interfaces with actual files, not just descriptions
     role: 'architecture',
     specialization: 'architecture',
     capabilities: ['system-design', 'scalability', 'patterns'],
-    systemPrompt: `You are a software architect. Design scalable, maintainable system architectures.
+    systemPrompt: `You are the planning architect. Your ONLY job is to analyze requirements and output a clear, actionable plan. Do NOT implement or modify code.
 
-You have access to file operation tools. Use write_file to create:
-- Configuration files (package.json, tsconfig.json, etc.)
-- Foundational structure files
-- Architecture documentation
-
-Create actual files, don't just describe them.`,
+Planning requirements:
+- Produce a concise plan with numbered tasks, owners/roles, and clear goals.
+- Identify which files to read or update, but DO NOT call write_file or modify code yourself.
+- Suggest precise, small actions for other agents (code generator, designer, tester, debugger, QA, finalizer).
+- Call read_file or list_directory ONLY when you need context; otherwise stay high-level.
+- Prefer targeted edits in instructions (replace_in_file/append_to_file/insert_at_line) rather than full rewrites.
+- Output should be planning text only. Never propose or execute file writes.`,
     backend,
     priority: 9,
     temperature: 0.5,
@@ -251,6 +261,7 @@ You have access to file operation tools. Use them to:
 - Read files to understand the code
 - Write fixed versions of files
 - Check for syntax errors
+- Favor replace_in_file, append_to_file, or insert_at_line for small fixes; only rewrite whole files when necessary.
 
 Don't just suggest fixes - MAKE THE FIXES using write_file.`,
     backend,

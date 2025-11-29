@@ -47,6 +47,17 @@ export const GenerateRequestSchema = z
 export type GenerateRequest = z.infer<typeof GenerateRequestSchema>;
 
 /**
+ * Tool call representation
+ */
+export const ToolCallSchema = z.object({
+  id: z.string().optional(),
+  name: z.string(),
+  arguments: z.record(z.unknown()).or(z.string()),
+});
+
+export type ToolCall = z.infer<typeof ToolCallSchema>;
+
+/**
  * Canonical representation of a text generation response.
  */
 export const GenerateResponseSchema = z
@@ -54,14 +65,15 @@ export const GenerateResponseSchema = z
     id: z.string().uuid(),
     requestId: z.string().uuid(),
     outputText: z.string(),
-    finishReason: z.enum(['stop', 'length', 'content_filter', 'error']),
+    finishReason: z.enum(['stop', 'length', 'content_filter', 'error', 'tool_calls']),
     usage: UsageSchema,
     latencyMs: z.number().int().nonnegative(),
     metadata: z.record(z.unknown()).default({}),
     validatorEvents: z.array(z.record(z.unknown())).default([]),
+    toolCalls: z.array(ToolCallSchema).optional(),
   })
-  .refine(res => res.finishReason === 'error' || res.outputText.length > 0, {
-    message: 'GenerateResponse.outputText cannot be empty unless finishReason is error',
+  .refine(res => res.finishReason === 'error' || res.outputText.length > 0 || (res.toolCalls && res.toolCalls.length > 0), {
+    message: 'GenerateResponse.outputText cannot be empty unless finishReason is error or toolCalls are present',
   });
 
 export type GenerateResponse = z.infer<typeof GenerateResponseSchema>;

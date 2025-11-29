@@ -31,6 +31,8 @@ export interface AccuralAIAdapterConfig {
 export class AccuralAIAdapter implements ModelAdapter {
     private client: GoogleGenAI;
     private modelName: string;
+    // Map sanitized tool names back to original names for tool call execution
+    private toolNameMap: Map<string, string> = new Map();
 
     constructor(config: AccuralAIAdapterConfig) {
         if (!config.googleApiKey) {
@@ -51,6 +53,9 @@ export class AccuralAIAdapter implements ModelAdapter {
         console.log(`[AI Debug] Model: ${this.modelName}`);
         console.log(`[AI Debug] Input messages: ${messages.length}`);
         console.log(`[AI Debug] Available tools: ${tools.length}`);
+
+        // Clear and rebuild tool name mapping for this request
+        this.toolNameMap.clear();
 
         const contents = this.convertMessagesToGemini(messages);
         console.log(`[AI Debug] Converted to ${contents.length} Gemini content items`);
@@ -92,7 +97,17 @@ export class AccuralAIAdapter implements ModelAdapter {
             console.warn("[AI Debug] Error extracting text:", e);
         }
 
-        const toolCalls = parseToolCalls(result);
+        let toolCalls = parseToolCalls(result);
+        
+        // Map sanitized tool names back to original names
+        toolCalls = toolCalls.map(tc => {
+            const originalName = this.toolNameMap.get(tc.name) || tc.name;
+            if (originalName !== tc.name) {
+                console.log(`[AI Debug] Mapped sanitized tool name '${tc.name}' back to '${originalName}'`);
+            }
+            return { ...tc, name: originalName };
+        });
+        
         if (toolCalls.length > 0) {
             console.log(`[AI Debug] Parsed ${toolCalls.length} tool call(s)`, toolCalls.map(tc => tc.name));
         } else {
@@ -135,6 +150,9 @@ export class AccuralAIAdapter implements ModelAdapter {
         console.log(`[AI Debug] Input messages: ${messages.length}`);
         console.log(`[AI Debug] Available tools: ${tools.length}`);
 
+        // Clear and rebuild tool name mapping for this request
+        this.toolNameMap.clear();
+
         const contents = this.convertMessagesToGemini(messages);
         const functionDeclarations = tools.map(t => this.convertToolToGeminiFunction(t));
 
@@ -175,7 +193,17 @@ export class AccuralAIAdapter implements ModelAdapter {
             }
 
             try {
-                const chunkToolCalls = parseToolCalls(chunk);
+                let chunkToolCalls = parseToolCalls(chunk);
+                
+                // Map sanitized tool names back to original names
+                chunkToolCalls = chunkToolCalls.map(tc => {
+                    const originalName = this.toolNameMap.get(tc.name) || tc.name;
+                    if (originalName !== tc.name) {
+                        console.log(`[AI Debug] Mapped sanitized tool name '${tc.name}' back to '${originalName}'`);
+                    }
+                    return { ...tc, name: originalName };
+                });
+                
                 for (const toolCall of chunkToolCalls) {
                     console.log(`[AI Debug] Stream chunk ${chunkCount}: function call - ${toolCall.name}`);
                     yield { type: "tool_call", toolCall };
@@ -258,10 +286,38 @@ export class AccuralAIAdapter implements ModelAdapter {
      * Convert our ToolDefinition format to Gemini's function declaration format
      */
     private convertToolToGeminiFunction(tool: ToolDefinition): any {
+        const sanitizedName = this.sanitizeToolName(tool.name);
+        
+        // Store mapping for reverse lookup when parsing tool calls
+        if (sanitizedName !== tool.name) {
+            this.toolNameMap.set(sanitizedName, tool.name);
+            console.warn(
+                `[AI Debug] Sanitized tool name '${tool.name}' -> '${sanitizedName}' to satisfy Gemini naming rules`
+            );
+        } else {
+            // Even if not sanitized, store identity mapping for consistency
+            this.toolNameMap.set(sanitizedName, tool.name);
+        }
+
         return {
-            name: tool.name,
+            name: sanitizedName,
             description: tool.description,
             parameters: tool.parameters,
         };
+    }
+
+    /**
+     * Enforce Google Gemini naming rules: start with letter/underscore, allow alphanumerics,
+     * underscores, dots, colons, and dashes, max length 64. Invalid characters are stripped.
+     */
+    private sanitizeToolName(name: string): string {
+        let sanitized = name.replace(/[^a-zA-Z0-9_.:-]/g, '_');
+        if (!/^[a-zA-Z_]/.test(sanitized)) {
+            sanitized = `_${sanitized}`;
+        }
+        if (sanitized.length > 64) {
+            sanitized = sanitized.slice(0, 64);
+        }
+        return sanitized;
     }
 }

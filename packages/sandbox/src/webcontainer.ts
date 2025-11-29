@@ -86,11 +86,14 @@ export class WebContainerSandbox implements SandboxInterface {
       }
     }
 
-    try {
-      await this.webcontainer.fs.stat(normalizedPath);
-    } catch (err: any) {
-      const code = err?.code || err?.message || "ENOENT";
-      throw new Error(`Path not found: ${path} (resolved to ${normalizedPath}) [${code}]`);
+    const fsAny = this.webcontainer.fs as any;
+    if (fsAny?.stat) {
+      try {
+        await fsAny.stat(normalizedPath);
+      } catch (err: any) {
+        const code = err?.code || err?.message || "ENOENT";
+        throw new Error(`Path not found: ${path} (resolved to ${normalizedPath}) [${code}]`);
+      }
     }
 
     await this.webcontainer.fs.rm(normalizedPath, { recursive: options?.recursive ?? false });

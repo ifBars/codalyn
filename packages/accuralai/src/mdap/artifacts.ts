@@ -260,7 +260,7 @@ export const ArtifactHelpers = {
     agentId?: string;
     agentRole?: string;
     taskId?: string;
-  }): Partial<Artifact> {
+  }): Partial<Artifact> & { filename: string; content: string } {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
     const filename = config.filename.endsWith('.md') ? config.filename : `${config.filename}.md`;
 
@@ -291,7 +291,7 @@ export const ArtifactHelpers = {
     description?: string;
     agentId?: string;
     agentRole?: string;
-  }): Partial<Artifact> {
+  }): Partial<Artifact> & { filename: string; content: string } {
     return {
       filename: config.filename,
       path: config.path || config.filename,

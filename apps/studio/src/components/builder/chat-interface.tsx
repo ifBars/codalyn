@@ -9,7 +9,7 @@ import {
     useState,
 } from "react";
 import Link from "next/link";
-import { ArrowUp, FileCode, Loader2, ChevronDown, ChevronUp, Brain, ListChecks, Sparkles } from "lucide-react";
+import { ArrowUp, FileCode, Loader2, ChevronDown, ChevronUp, Brain, ListChecks, Sparkles, FileText, X, Clock, Trash2 } from "lucide-react";
 import { MarkdownContent } from "@/components/ui/markdown-content";
 import {
     type Agent,
@@ -28,8 +28,11 @@ import {
 } from "@/lib/project-storage";
 import { WebContainerManager } from "@/lib/webcontainer-manager";
 import { parseChatContent, ChatSection } from "@/lib/chat-parser";
-import { executeMdapInBrowser, saveArtifactsToLocalStorage } from "@/lib/builder-mdap";
+import { executeMdapInBrowser, saveArtifactsToLocalStorage, getPlansFromLocalStorage, deleteArtifactFromLocalStorage } from "@/lib/builder-mdap";
 import { MdapProgress, type MdapProgressUpdate } from "./mdap-progress";
+import type { Artifact } from "@codalyn/accuralai";
+import { cn } from "@/lib/utils";
+import type { AccuralAIModelId } from "@/lib/ai";
 
 interface ChatInterfaceProps {
     activeProject: StoredProject | null;
@@ -43,7 +46,8 @@ interface ChatInterfaceProps {
     onNewPlan?: (plan: any) => void;
     onNewArtifacts?: (artifacts: any[]) => void;
     googleApiKey?: string;
-    selectedModel?: string;
+    selectedModel?: AccuralAIModelId;
+    plans?: Artifact[];
 }
 
 export interface ChatInterfaceRef {
@@ -72,7 +76,8 @@ export const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(
         onNewPlan,
         onNewArtifacts,
         googleApiKey,
-        selectedModel
+        selectedModel,
+        plans: externalPlans = []
     }, ref) => {
         const [messages, setMessages] = useState<AIMessage[]>([]);
         const [input, setInput] = useState("");
@@ -80,6 +85,10 @@ export const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(
         const [showScreenshotTip, setShowScreenshotTip] = useState(false);
         const [isMdapExecuting, setIsMdapExecuting] = useState(false);
         const [mdapProgress, setMdapProgress] = useState<MdapProgressUpdate | null>(null);
+        const [plans, setPlans] = useState<Artifact[]>(externalPlans);
+        const [showPlans, setShowPlans] = useState(false);
+        const [selectedPlan, setSelectedPlan] = useState<Artifact | null>(null);
+        const [showPlanDetail, setShowPlanDetail] = useState(false);
 
         const scrollRef = useRef<HTMLDivElement>(null);
         const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -92,6 +101,47 @@ export const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(
         useEffect(() => {
             setMessages(welcomeMessages());
         }, []);
+
+        // Sync plans from external prop and localStorage with proper deduplication
+        useEffect(() => {
+            if (activeProject) {
+                const storedPlans = getPlansFromLocalStorage(activeProject.id);
+                // Merge external plans with stored plans, deduplicating by ID
+                // Prefer the one with the latest updatedAt/createdAt timestamp
+                const planMap = new Map<string, Artifact>();
+                
+                [...storedPlans, ...externalPlans].forEach(plan => {
+                    const existing = planMap.get(plan.id);
+                    if (!existing) {
+                        planMap.set(plan.id, plan);
+                    } else {
+                        // Keep the one with the latest timestamp
+                        const existingDate = existing.metadata?.updatedAt 
+                            ? new Date(existing.metadata.updatedAt).getTime()
+                            : existing.metadata?.createdAt 
+                                ? new Date(existing.metadata.createdAt).getTime()
+                                : 0;
+                        const planDate = plan.metadata?.updatedAt
+                            ? new Date(plan.metadata.updatedAt).getTime()
+                            : plan.metadata?.createdAt
+                                ? new Date(plan.metadata.createdAt).getTime()
+                                : 0;
+                        if (planDate > existingDate) {
+                            planMap.set(plan.id, plan);
+                        }
+                    }
+                });
+                
+                const mergedPlans = Array.from(planMap.values()).sort((a, b) => {
+                    const dateA = a.metadata?.createdAt ? new Date(a.metadata.createdAt).getTime() : 0;
+                    const dateB = b.metadata?.createdAt ? new Date(b.metadata.createdAt).getTime() : 0;
+                    return dateB - dateA; // Newest first
+                });
+                setPlans(mergedPlans);
+            } else {
+                setPlans([]);
+            }
+        }, [activeProject, externalPlans]);
 
         useEffect(() => {
             if (scrollRef.current) {
@@ -169,6 +219,17 @@ export const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(
                     }
                     if (result.artifacts.length > 0 && onNewArtifacts) {
                         onNewArtifacts(result.artifacts);
+                    }
+
+                    // Update local plans state
+                    if (result.planArtifact) {
+                        setPlans((prev) => {
+                            const existing = prev.find(p => p.id === result.planArtifact!.id);
+                            if (existing) {
+                                return prev.map(p => p.id === result.planArtifact!.id ? result.planArtifact! : p);
+                            }
+                            return [result.planArtifact!, ...prev];
+                        });
                     }
 
                     // Display result
@@ -433,18 +494,124 @@ export const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(
 
         const canSend = !!activeProject && !isLoading && !isInitializing && Boolean(input.trim()) && agentRef.current;
 
+        const handlePlanSelect = (plan: Artifact) => {
+            setSelectedPlan(plan);
+            setShowPlanDetail(true);
+        };
+
+        const handleDeletePlan = (e: React.MouseEvent, plan: Artifact) => {
+            e.stopPropagation();
+            if (!activeProject) return;
+            
+            if (confirm(`Are you sure you want to delete "${plan.filename}"?`)) {
+                const deleted = deleteArtifactFromLocalStorage(activeProject.id, plan.id);
+                if (deleted) {
+                    setPlans((prev) => prev.filter(p => p.id !== plan.id));
+                    if (selectedPlan?.id === plan.id) {
+                        setSelectedPlan(null);
+                        setShowPlanDetail(false);
+                    }
+                    onStatusMessage(`Plan "${plan.filename}" deleted.`);
+                }
+            }
+        };
+
+        const formatPlanDate = (date: Date | undefined) => {
+            if (!date) return "Unknown";
+            return new Date(date).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+            });
+        };
+
         return (
             <div className="flex w-full flex-col border-r border-border bg-background lg:w-[420px]">
                 <div className="flex items-center justify-between border-b border-border px-4 py-2 text-[10px] uppercase tracking-wider text-muted-foreground">
                     <span>Chat</span>
-                    <button
-                        type="button"
-                        onClick={handleNewChat}
-                        className="rounded border border-border px-2 py-1 text-[11px] font-medium text-foreground transition hover:border-primary hover:text-primary"
-                    >
-                        New chat
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {plans.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => setShowPlans(!showPlans)}
+                                className={cn(
+                                    "relative rounded border px-2 py-1 text-[11px] font-medium transition",
+                                    showPlans
+                                        ? "border-primary bg-primary/10 text-primary"
+                                        : "border-border text-foreground hover:border-primary hover:text-primary"
+                                )}
+                            >
+                                <div className="flex items-center gap-1.5">
+                                    <FileText className="h-3 w-3" />
+                                    <span>Plans</span>
+                                    <span className="rounded-full bg-primary/20 px-1.5 py-0.5 text-[10px] text-primary">
+                                        {plans.length}
+                                    </span>
+                                </div>
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            onClick={handleNewChat}
+                            className="rounded border border-border px-2 py-1 text-[11px] font-medium text-foreground transition hover:border-primary hover:text-primary"
+                        >
+                            New chat
+                        </button>
+                    </div>
                 </div>
+                {showPlans && plans.length > 0 && (
+                    <div className="border-b border-border bg-card/30">
+                        <div className="max-h-[300px] overflow-y-auto p-3 space-y-2">
+                            {plans.map((plan) => (
+                                <div
+                                    key={plan.id}
+                                    className={cn(
+                                        "relative w-full rounded-md border p-2.5 transition-colors group",
+                                        selectedPlan?.id === plan.id
+                                            ? "bg-primary/5 border-primary/50"
+                                            : "bg-card border-border/50 hover:bg-muted/50 hover:border-primary/30"
+                                    )}
+                                >
+                                    <button
+                                        onClick={() => handlePlanSelect(plan)}
+                                        className="w-full text-left pr-6"
+                                    >
+                                        <div className="flex items-start gap-2">
+                                            <FileText className="h-3.5 w-3.5 shrink-0 text-primary mt-0.5" />
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="text-xs font-medium truncate text-foreground">
+                                                        {plan.filename}
+                                                    </span>
+                                                    {plan.version > 1 && (
+                                                        <span className="text-[10px] text-muted-foreground">v{plan.version}</span>
+                                                    )}
+                                                </div>
+                                                {plan.metadata?.description && (
+                                                    <p className="text-[10px] text-muted-foreground line-clamp-2 mb-1.5">
+                                                        {plan.metadata.description}
+                                                    </p>
+                                                )}
+                                                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                                                    <Clock className="h-3 w-3" />
+                                                    <span>{formatPlanDate(plan.metadata?.createdAt)}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={(e) => handleDeletePlan(e, plan)}
+                                        className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-opacity"
+                                        title="Delete plan"
+                                    >
+                                        <Trash2 className="h-3 w-3" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
                 <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto px-4 py-3">
                     {isInitializing && (
                         <div className="flex items-center gap-2 rounded border border-border bg-card px-3 py-2 text-xs text-card-foreground">
@@ -564,6 +731,59 @@ export const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(
                         </button>
                     </div>
                 </div>
+
+                {/* Plan Detail Modal */}
+                {showPlanDetail && selectedPlan && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
+                        <div className="relative w-full max-w-4xl max-h-[90vh] flex flex-col bg-background border border-border rounded-lg shadow-lg">
+                            {/* Header */}
+                            <div className="flex items-center justify-between border-b border-border px-6 py-4">
+                                <div className="flex items-center gap-3 flex-1 min-w-0">
+                                    <div className="p-2 rounded-md bg-primary/10">
+                                        <FileText className="h-5 w-5 text-primary" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <h2 className="text-lg font-semibold text-foreground truncate">
+                                            {selectedPlan.filename}
+                                        </h2>
+                                        <div className="flex items-center gap-3 mt-1">
+                                            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                                                <Clock className="h-3 w-3" />
+                                                {formatPlanDate(selectedPlan.metadata?.createdAt)}
+                                            </span>
+                                            {selectedPlan.version > 1 && (
+                                                <span className="text-xs text-muted-foreground">
+                                                    v{selectedPlan.version}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setShowPlanDetail(false);
+                                        setSelectedPlan(null);
+                                    }}
+                                    className="ml-4 p-2 rounded-md hover:bg-muted transition-colors"
+                                >
+                                    <X className="h-5 w-5 text-muted-foreground" />
+                                </button>
+                            </div>
+                            
+                            {/* Content */}
+                            <div className="flex-1 overflow-y-auto p-6">
+                                {selectedPlan.metadata?.description && (
+                                    <p className="text-sm text-muted-foreground mb-6 pb-6 border-b border-border">
+                                        {selectedPlan.metadata.description}
+                                    </p>
+                                )}
+                                <div className="prose prose-sm dark:prose-invert max-w-none">
+                                    <MarkdownContent content={selectedPlan.content} />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
