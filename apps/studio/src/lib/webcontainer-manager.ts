@@ -8,6 +8,7 @@ import {
 
 /**
  * WebContainer Manager for running Vite + React + Tailwind projects in-browser
+ * We should abstract this to the sandbox package for maintainability
  */
 export class WebContainerManager {
   private static instance: WebContainer | null = null;
