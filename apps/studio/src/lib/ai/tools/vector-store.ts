@@ -1,20 +1,28 @@
 /**
  * VectorStore ToolSet for semantic search functionality
  * Provides search_project tool that uses VectorStore for semantic code search
+ * Supports both Gemini (local) and Mixedbread (cloud) backends
  */
 
 import { ToolSet, ToolDefinition, ToolCall, ToolResult } from "../core/types";
 import type { VectorStore } from "../../vector-store";
+import type { MixedbreadVectorStore } from "../../mixedbread-vector-store";
 
 export interface VectorStoreToolSetConfig {
     vectorStore: VectorStore | null;
+    mixedbreadStore?: MixedbreadVectorStore | null;
+    searchBackend?: 'gemini' | 'mixedbread' | 'auto'; // 'auto' uses Mixedbread if available
 }
 
 export class VectorStoreToolSet implements ToolSet {
     private vectorStore: VectorStore | null;
+    private mixedbreadStore: MixedbreadVectorStore | null;
+    private searchBackend: 'gemini' | 'mixedbread' | 'auto';
 
     constructor(config: VectorStoreToolSetConfig) {
         this.vectorStore = config.vectorStore;
+        this.mixedbreadStore = config.mixedbreadStore || null;
+        this.searchBackend = config.searchBackend || 'auto';
     }
 
     getDefinitions(): ToolDefinition[] {
@@ -56,12 +64,40 @@ export class VectorStoreToolSet implements ToolSet {
                     };
                 }
 
+                // Determine which backend to use
+                const useMixedbread = this.shouldUseMixedbread();
+
+                // Try Mixedbread first if selected
+                if (useMixedbread && this.mixedbreadStore) {
+                    try {
+                        const results = await this.mixedbreadStore.search(query, limit);
+                        return {
+                            toolCallId: toolCall.id,
+                            name: toolCall.name,
+                            result: {
+                                query,
+                                results: results.map((r) => ({
+                                    path: r.path,
+                                    chunkIndex: r.chunkIndex,
+                                    content: r.content,
+                                    score: r.score
+                                }))
+                            },
+                            success: true,
+                        };
+                    } catch (error) {
+                        console.warn("Mixedbread search failed, falling back to Gemini:", error);
+                        // Fall through to Gemini fallback
+                    }
+                }
+
+                // Fallback to Gemini
                 if (!this.vectorStore) {
                     return {
                         toolCallId: toolCall.id,
                         name: toolCall.name,
                         result: null,
-                        error: "Vector store not initialized",
+                        error: "No vector store backend available",
                         success: false,
                     };
                 }
@@ -107,10 +143,31 @@ export class VectorStoreToolSet implements ToolSet {
     }
 
     /**
+     * Determine which backend to use based on configuration
+     */
+    private shouldUseMixedbread(): boolean {
+        if (this.searchBackend === 'gemini') {
+            return false;
+        }
+        if (this.searchBackend === 'mixedbread') {
+            return true;
+        }
+        // 'auto': use Mixedbread if available, otherwise Gemini
+        return this.mixedbreadStore !== null;
+    }
+
+    /**
      * Update the vector store instance
      */
     setVectorStore(vectorStore: VectorStore | null): void {
         this.vectorStore = vectorStore;
+    }
+
+    /**
+     * Update the Mixedbread store instance
+     */
+    setMixedbreadStore(mixedbreadStore: MixedbreadVectorStore | null): void {
+        this.mixedbreadStore = mixedbreadStore;
     }
 }
 

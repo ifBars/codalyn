@@ -115,8 +115,8 @@ export function createBuilderMdapOrchestrator(config: MdapOrchestratorConfig): M
     systemPrompt:
       "You are a planning agent that decomposes complex web-app builder tasks into atomic subtasks.",
     temperature: 0.2,
-    maxTokens: 1024,
-    maxIterations: 10,
+    maxTokens: 2048,
+    maxIterations: 20,
   });
 
   return new MDAPOrchestrator({

@@ -704,6 +704,48 @@ export const openPortTool: ToolDefinition = {
   },
 };
 
+export const getConsoleLogsTool: ToolDefinition = {
+  name: "get_console_logs",
+  description: "Get console logs and errors from the sandbox. Use this to check for errors, warnings, or other log messages after making code changes. This helps detect compilation errors, runtime errors, dependency issues, and other problems before finishing the response.",
+  parameters: {
+    type: "object",
+    properties: {
+      limit: {
+        type: "number",
+        description: "Maximum number of log entries to return (default: 50)",
+        default: 50,
+      },
+      level: {
+        type: "string",
+        enum: ["all", "error", "warn", "info"],
+        description: "Filter by log level: 'all' returns all logs, 'error' returns only errors, 'warn' returns warnings and errors, 'info' returns info, warn, and error logs (default: 'all')",
+        default: "all",
+      },
+      since: {
+        type: "number",
+        description: "Only return logs since this timestamp in milliseconds (Unix timestamp). Useful for getting logs after a specific time.",
+      },
+    },
+    required: [],
+  },
+};
+
+export const checkTypeErrorsTool: ToolDefinition = {
+  name: "check_type_errors",
+  description: "Run TypeScript type checking to detect type errors in the codebase. This checks for TypeScript compilation errors without emitting files. Use this to verify that all code is type-safe before finishing.",
+  parameters: {
+    type: "object",
+    properties: {
+      includeWarnings: {
+        type: "boolean",
+        description: "Include warnings in addition to errors (default: false)",
+        default: false,
+      },
+    },
+    required: [],
+  },
+};
+
 /**
  * Metadata tools
  */
@@ -824,6 +866,8 @@ export const toolRegistry: ToolDefinition[] = [
   sandboxInfoTool,
   portListTool,
   openPortTool,
+  getConsoleLogsTool,
+  checkTypeErrorsTool,
   // Metadata
   projectInfoTool,
   envReadTool,

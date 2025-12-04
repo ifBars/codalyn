@@ -37,6 +37,8 @@ export interface OrchestratorTask {
   workflow?: WorkflowMode;
   context?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
+  /** Existing plan artifacts that may be referenced in the prompt */
+  existingPlans?: Artifact[];
 }
 
 export interface DecomposedPlan {
@@ -77,6 +79,27 @@ export interface TaskExecution {
   result?: AgentResult;
   error?: string;
   retries: number;
+  /** Current iteration number (0-indexed) */
+  currentIteration?: number;
+  /** Maximum iterations allowed */
+  maxIterations?: number;
+  /** Currently executing tool call */
+  currentToolCall?: {
+    name: string;
+    args: any;
+    startedAt: number;
+  };
+  /** History of completed tool calls */
+  completedToolCalls?: Array<{
+    name: string;
+    args: any;
+    result?: any;
+    error?: string;
+    duration: number;
+    success: boolean;
+  }>;
+  /** Task description from decomposed plan */
+  taskDescription?: string;
 }
 
 export class MDAPOrchestrator {
@@ -94,6 +117,58 @@ export class MDAPOrchestrator {
     this.router = this.config.router;
     this.artifactRegistry = createArtifactRegistry();
     this.artifactSink = this.config.artifactSink;
+  }
+
+  /**
+   * Determine if a plan artifact should be created based on task complexity
+   */
+  private shouldCreatePlan(plan: DecomposedPlan, task: OrchestratorTask): boolean {
+    // Don't create plan artifact if disabled in config
+    if (!this.config.generatePlanArtifact) {
+      return false;
+    }
+
+    // Create plan artifact if:
+    // 1. Plan has multiple tasks (3+ tasks indicates coordination needed)
+    // 2. Plan has tasks with different agent roles (requires coordination)
+    // 3. Plan has high complexity tasks
+    const hasMultipleTasks = plan.tasks.length >= 3;
+    const hasMultipleRoles = new Set(plan.tasks.map(t => t.agentRole)).size > 1;
+    const hasHighComplexity = plan.tasks.some(t => 
+      t.complexity?.toLowerCase() === 'high' || 
+      t.complexity?.toLowerCase() === 'medium'
+    );
+
+    return hasMultipleTasks || (hasMultipleRoles && hasHighComplexity);
+  }
+
+  /**
+   * Find referenced plan artifact from existing plans
+   */
+  private findReferencedPlan(task: OrchestratorTask, planName?: string): Artifact | undefined {
+    if (!task.existingPlans || task.existingPlans.length === 0) {
+      return undefined;
+    }
+
+    // Try to match by plan name (sanitized)
+    if (planName) {
+      const sanitizedPlanName = planName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
+      
+      return task.existingPlans.find(plan => {
+        const sanitizedFilename = plan.filename
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '')
+          .replace(/\.md$/, '');
+        return sanitizedFilename.includes(sanitizedPlanName) || 
+               sanitizedPlanName.includes(sanitizedFilename);
+      });
+    }
+
+    return undefined;
   }
 
   /**
@@ -158,36 +233,68 @@ Format your response as valid JSON following this structure:
           if (jsonMatch) {
             plan = JSON.parse(jsonMatch[0]) as DecomposedPlan;
 
-            // Create plan artifact if enabled
-            if (this.config.generatePlanArtifact) {
-              // Generate a filename from the plan name or fallback to taskId
+            // Only create plan artifact if task complexity warrants it
+            if (this.shouldCreatePlan(plan, task)) {
               const planName = plan.name || plan.objective || 'MDAP Execution Plan';
-              const sanitizedPlanName = planName
-                .toLowerCase()
-                .replace(/[^a-z0-9]+/g, '-')
-                .replace(/^-|-$/g, '')
-                .substring(0, 50) || 'plan';
               
-              const planFilename = `${sanitizedPlanName}-${taskId.substring(0, 8)}`;
+              // Check if user referenced an existing plan
+              const referencedPlan = this.findReferencedPlan(task, planName);
               
-              const planMarkdown = ArtifactHelpers.formatPlanMarkdown({
-                title: plan.name || 'MDAP Execution Plan',
-                objective: plan.objective,
-                strategy: plan.strategy,
-                tasks: plan.tasks,
-                timestamp: new Date(),
-              });
+              if (referencedPlan) {
+                // Update existing plan artifact instead of creating new one
+                const planMarkdown = ArtifactHelpers.formatPlanMarkdown({
+                  title: plan.name || 'MDAP Execution Plan',
+                  objective: plan.objective,
+                  strategy: plan.strategy,
+                  tasks: plan.tasks,
+                  timestamp: new Date(),
+                });
 
-              const planArtifactData = ArtifactHelpers.createPlan({
-                filename: planFilename,
-                content: planMarkdown,
-                description: plan.name || plan.objective || 'MDAP execution plan generated by planning agent',
-                agentId: this.mainAgent.id,
-                agentRole: this.mainAgent.role,
-                taskId,
-              });
+                const updatedPlanData = {
+                  id: referencedPlan.id, // Use existing ID to update
+                  filename: referencedPlan.filename, // Keep same filename
+                  path: referencedPlan.path, // Keep same path so addOrUpdate can find it
+                  content: planMarkdown,
+                  type: 'plan' as const,
+                  mimeType: 'text/markdown',
+                  metadata: {
+                    ...referencedPlan.metadata,
+                    description: plan.name || plan.objective || referencedPlan.metadata.description,
+                    updatedAt: new Date(),
+                    taskId,
+                  },
+                };
 
-              planArtifact = await this.addArtifact(planArtifactData);
+                planArtifact = await this.addArtifact(updatedPlanData);
+              } else {
+                // Create new plan artifact
+                const sanitizedPlanName = planName
+                  .toLowerCase()
+                  .replace(/[^a-z0-9]+/g, '-')
+                  .replace(/^-|-$/g, '')
+                  .substring(0, 50) || 'plan';
+                
+                const planFilename = `${sanitizedPlanName}-${taskId.substring(0, 8)}`;
+                
+                const planMarkdown = ArtifactHelpers.formatPlanMarkdown({
+                  title: plan.name || 'MDAP Execution Plan',
+                  objective: plan.objective,
+                  strategy: plan.strategy,
+                  tasks: plan.tasks,
+                  timestamp: new Date(),
+                });
+
+                const planArtifactData = ArtifactHelpers.createPlan({
+                  filename: planFilename,
+                  content: planMarkdown,
+                  description: plan.name || plan.objective || 'MDAP execution plan generated by planning agent',
+                  agentId: this.mainAgent.id,
+                  agentRole: this.mainAgent.role,
+                  taskId,
+                });
+
+                planArtifact = await this.addArtifact(planArtifactData);
+              }
             }
 
             // Convert plan tasks to agent tasks
@@ -201,6 +308,7 @@ Format your response as valid JSON following this structure:
                 agentRole: t.agentRole,
                 complexity: t.complexity,
                 estimatedTime: t.estimatedTime,
+                taskDescription: t.description, // Store description in metadata for later retrieval
               },
             }));
           } else {
@@ -226,22 +334,25 @@ Format your response as valid JSON following this structure:
       // Execute subtasks based on workflow mode
       switch (workflow) {
         case 'sequential':
-          results.push(...(await this.executeSequential(subtasks, routingDecisions)));
+          results.push(...(await this.executeSequential(subtasks, routingDecisions, plan)));
           break;
         case 'parallel':
-          results.push(...(await this.executeParallel(subtasks, routingDecisions)));
+          results.push(...(await this.executeParallel(subtasks, routingDecisions, plan)));
           break;
         case 'conditional':
-          results.push(...(await this.executeConditional(subtasks, routingDecisions)));
+          results.push(...(await this.executeConditional(subtasks, routingDecisions, plan)));
           break;
       }
 
       // Combine results
       const finalOutput = results.map(r => r.output).join('\n\n');
 
+      // Check for errors after execution completes
+      const errorFixResults = await this.checkAndFixErrors(routingDecisions, taskId);
+
       return {
         taskId,
-        results,
+        results: [...results, ...errorFixResults],
         finalOutput,
         workflow,
         routingDecisions,
@@ -253,6 +364,7 @@ Format your response as valid JSON following this structure:
           subtaskCount: subtasks.length,
           agentsUsed: new Set(results.map(r => r.agentId)).size,
           artifactCount: this.artifactRegistry.count(),
+          errorFixIterations: errorFixResults.length,
         },
       };
     } catch (error) {
@@ -268,7 +380,8 @@ Format your response as valid JSON following this structure:
    */
   private async executeSequential(
     tasks: AgentTask[],
-    routingDecisions: RoutingDecision[]
+    routingDecisions: RoutingDecision[],
+    plan?: DecomposedPlan // Phase 0.2: Pass master plan to agents
   ): Promise<AgentResult[]> {
     const results: AgentResult[] = [];
     const contextAccumulator: string[] = [];
@@ -279,16 +392,32 @@ Format your response as valid JSON following this structure:
         ...task,
         previousOutputs: [...contextAccumulator],
         existingArtifacts: this.artifactRegistry.getAll(),
+        masterPlan: plan // Phase 0.2: Include master plan
+          ? {
+              objective: plan.objective,
+              strategy: plan.strategy,
+              tasks: plan.tasks.map(t => ({
+                id: t.id,
+                agentRole: t.agentRole,
+                description: t.description,
+              })),
+            }
+          : undefined,
       };
 
-      const result = await this.executeTask(enhancedTask, routingDecisions);
+      // Get task description from plan or metadata
+      const taskDescription = plan?.tasks.find(t => t.id === task.id)?.description || 
+                              task.metadata?.taskDescription as string | undefined;
+
+      const result = await this.executeTask(enhancedTask, routingDecisions, taskDescription);
       results.push(result);
 
       // Add result to context accumulator
       const agent = this.router.getAgent(result.agentId);
       const agentRole = agent?.role || result.agentId;
+      const MAX_CONTEXT_PER_AGENT = 1000; // Phase 0.1: Increased from 500 to 1000 chars
       contextAccumulator.push(
-        `[Agent: ${agentRole}] ${result.output.substring(0, 500)}${result.output.length > 500 ? '...' : ''}`
+        `[Agent: ${agentRole}] ${result.output.substring(0, MAX_CONTEXT_PER_AGENT)}${result.output.length > MAX_CONTEXT_PER_AGENT ? '...' : ''}`
       );
 
       // Add artifacts to registry
@@ -307,7 +436,8 @@ Format your response as valid JSON following this structure:
    */
   private async executeParallel(
     tasks: AgentTask[],
-    routingDecisions: RoutingDecision[]
+    routingDecisions: RoutingDecision[],
+    plan?: DecomposedPlan // Phase 0.2: Pass master plan to agents
   ): Promise<AgentResult[]> {
     // Respect max parallel tasks limit
     const batches: AgentTask[][] = [];
@@ -324,10 +454,25 @@ Format your response as valid JSON following this structure:
       const enhancedBatch = batch.map(task => ({
         ...task,
         existingArtifacts: currentArtifacts,
+        masterPlan: plan // Phase 0.2: Include master plan
+          ? {
+              objective: plan.objective,
+              strategy: plan.strategy,
+              tasks: plan.tasks.map(t => ({
+                id: t.id,
+                agentRole: t.agentRole,
+                description: t.description,
+              })),
+            }
+          : undefined,
       }));
 
       const batchResults = await Promise.all(
-        enhancedBatch.map(task => this.executeTask(task, routingDecisions))
+        enhancedBatch.map(task => {
+          const taskDescription = plan?.tasks.find(t => t.id === task.id)?.description || 
+                                  task.metadata?.taskDescription as string | undefined;
+          return this.executeTask(task, routingDecisions, taskDescription);
+        })
       );
 
       // Add artifacts from batch to registry
@@ -350,7 +495,8 @@ Format your response as valid JSON following this structure:
    */
   private async executeConditional(
     tasks: AgentTask[],
-    routingDecisions: RoutingDecision[]
+    routingDecisions: RoutingDecision[],
+    plan?: DecomposedPlan // Phase 0.2: Pass master plan to agents
   ): Promise<AgentResult[]> {
     const results: AgentResult[] = [];
     const contextAccumulator: string[] = [];
@@ -363,9 +509,24 @@ Format your response as valid JSON following this structure:
         context: { ...context, ...task.context },
         previousOutputs: [...contextAccumulator],
         existingArtifacts: this.artifactRegistry.getAll(),
+        masterPlan: plan // Phase 0.2: Include master plan
+          ? {
+              objective: plan.objective,
+              strategy: plan.strategy,
+              tasks: plan.tasks.map(t => ({
+                id: t.id,
+                agentRole: t.agentRole,
+                description: t.description,
+              })),
+            }
+          : undefined,
       };
 
-      const result = await this.executeTask(taskWithContext, routingDecisions);
+      // Get task description from plan or metadata
+      const taskDescription = plan?.tasks.find(t => t.id === task.id)?.description || 
+                              task.metadata?.taskDescription as string | undefined;
+
+      const result = await this.executeTask(taskWithContext, routingDecisions, taskDescription);
       results.push(result);
 
       // Update context with result
@@ -397,7 +558,8 @@ Format your response as valid JSON following this structure:
    */
   private async executeTask(
     task: AgentTask,
-    routingDecisions: RoutingDecision[]
+    routingDecisions: RoutingDecision[],
+    taskDescription?: string
   ): Promise<AgentResult> {
     let attempt = 0;
 
@@ -420,9 +582,32 @@ Format your response as valid JSON following this structure:
           startTime: Date.now(),
           status: 'running',
           retries: attempt,
+          taskDescription: taskDescription || task.metadata?.agentRole || task.prompt.substring(0, 100),
         };
         this.taskExecutions.set(task.id, execution);
         this.activeTasks.add(task.id);
+
+        // Create enhanced task with progress callback
+        const enhancedTask: AgentTask = {
+          ...task,
+          onProgress: (update) => {
+            // Update execution with progress information
+            const currentExecution = this.taskExecutions.get(task.id);
+            if (currentExecution) {
+              currentExecution.currentIteration = update.iteration;
+              currentExecution.maxIterations = update.maxIterations;
+              currentExecution.currentToolCall = update.currentToolCall;
+              
+              // Update completed tool calls
+              if (update.completedToolCalls) {
+                currentExecution.completedToolCalls = update.completedToolCalls;
+              }
+            }
+            
+            // Also call original progress callback if provided
+            task.onProgress?.(update);
+          },
+        };
 
         // Execute with timeout
         const timeoutPromise = new Promise<never>((_, reject) =>
@@ -430,14 +615,21 @@ Format your response as valid JSON following this structure:
         );
 
         const result = await Promise.race([
-          agent.execute(task),
+          agent.execute(enhancedTask),
           timeoutPromise,
         ]);
 
         // Update execution
-        execution.endTime = Date.now();
-        execution.status = 'completed';
-        execution.result = result;
+        const finalExecution = this.taskExecutions.get(task.id);
+        if (finalExecution) {
+          finalExecution.endTime = Date.now();
+          finalExecution.status = 'completed';
+          finalExecution.result = result;
+          // Preserve progress info from result metadata
+          if (result.metadata?.iterations) {
+            finalExecution.currentIteration = result.metadata.iterations as number;
+          }
+        }
         this.activeTasks.delete(task.id);
 
         return result;
@@ -509,6 +701,93 @@ Format your response as valid JSON following this structure:
   clearHistory(): void {
     this.taskExecutions.clear();
     this.activeTasks.clear();
+  }
+
+  /**
+   * Check for errors and fix them using the debugger agent
+   */
+  private async checkAndFixErrors(
+    routingDecisions: RoutingDecision[],
+    parentTaskId: string,
+    maxIterations: number = 5
+  ): Promise<AgentResult[]> {
+    const errorFixResults: AgentResult[] = [];
+    
+    // Get the debugger agent
+    const debuggerAgent = this.router.getAgent('debugger');
+    if (!debuggerAgent) {
+      console.warn('[MDAP Orchestrator] Debugger agent not available for error checking');
+      return errorFixResults;
+    }
+
+    for (let iteration = 0; iteration < maxIterations; iteration++) {
+      // Create a task for the debugger agent to check for errors
+      const errorCheckTask: AgentTask = {
+        id: `${parentTaskId}-error-check-${iteration + 1}`,
+        prompt: `Check for TypeScript type errors, build errors, and runtime errors in the codebase. Use the check_type_errors tool to check for type errors, and get_console_logs to check for build and runtime errors. If any errors are found, report them in detail. If no errors are found, respond with "No errors found."`,
+        metadata: {
+          type: 'error_check',
+          iteration: iteration + 1,
+          parentTaskId,
+        },
+      };
+
+      let hasErrors = false;
+      let errorMessage = '';
+
+      try {
+        // Execute error checking task
+        const checkResult = await this.executeTask(errorCheckTask, routingDecisions, errorCheckTask.prompt);
+        
+        // Parse the result to see if errors were found
+        const output = checkResult.output.toLowerCase();
+        if (output.includes('no errors found') || 
+            output.includes('no type errors') ||
+            output.includes('no build errors') ||
+            output.includes('no runtime errors')) {
+          // No errors found, we're done
+          break;
+        }
+
+        // If the output contains error information, extract it
+        if (output.includes('error') || output.includes('failed') || output.includes('cannot')) {
+          hasErrors = true;
+          errorMessage = checkResult.output;
+        }
+      } catch (error) {
+        console.warn('[MDAP Orchestrator] Error during error checking:', error);
+        // Continue even if error checking fails
+        break;
+      }
+
+      if (!hasErrors) {
+        // No errors found, we're done
+        break;
+      }
+
+      // Create a task for the debugger agent to fix errors
+      const errorFixTask: AgentTask = {
+        id: `${parentTaskId}-error-fix-${iteration + 1}`,
+        prompt: `⚠️ ERRORS DETECTED - Please fix the following issues:\n\n${errorMessage}\n\nPlease fix all these errors to ensure the application builds and runs correctly. Use the appropriate tools to fix type errors, build errors, and runtime errors.`,
+        metadata: {
+          type: 'error_fix',
+          iteration: iteration + 1,
+          parentTaskId,
+        },
+      };
+
+      try {
+        const fixResult = await this.executeTask(errorFixTask, routingDecisions, errorFixTask.prompt);
+        errorFixResults.push(fixResult);
+        console.log(`[MDAP Orchestrator] Error fix iteration ${iteration + 1} completed`);
+      } catch (error) {
+        console.error(`[MDAP Orchestrator] Error fix iteration ${iteration + 1} failed:`, error);
+        // Stop trying if execution fails
+        break;
+      }
+    }
+
+    return errorFixResults;
   }
 
   /**

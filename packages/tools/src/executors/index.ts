@@ -41,14 +41,16 @@ import { envWriteExecutor } from "./metadata/env_write";
 import { projectInfoExecutor } from "./metadata/project_info";
 import { viewPlansExecutor } from "./metadata/view_plans";
 import { deleteArtifactExecutor } from "./metadata/delete_artifact";
+import { checkTypeErrorsExecutor } from "./metadata/check_type_errors";
 
 // Sandbox executors
 import { sandboxInfoExecutor } from "./sandbox/sandbox_info";
 import { portListExecutor } from "./sandbox/port_list";
 import { openPortExecutor } from "./sandbox/open_port";
+import { getConsoleLogsExecutor } from "./sandbox/get_console_logs";
 
 // Browser executors
-import { captureScreenshotExecutor } from "./browser/capture_screenshot";
+// Note: capture_screenshot is handled client-side by BrowserToolSet, not via executor registry
 
 // Context7 executors
 import { context7GetDocsExecutor } from "./context7/context7_get_docs";
@@ -95,12 +97,13 @@ export const executorRegistry: Map<string, ToolExecutor> = new Map([
   ["project_info", projectInfoExecutor],
   ["view_plans", viewPlansExecutor],
   ["delete_artifact", deleteArtifactExecutor],
+  ["check_type_errors", checkTypeErrorsExecutor],
   // Sandbox
   ["sandbox_info", sandboxInfoExecutor],
   ["port_list", portListExecutor],
   ["open_port", openPortExecutor],
-  // Browser
-  ["capture_screenshot", captureScreenshotExecutor],
+  ["get_console_logs", getConsoleLogsExecutor],
+  // Browser tools (capture_screenshot) are handled client-side by BrowserToolSet
   // Context7
   ["context7_get_docs", context7GetDocsExecutor],
   ["context7_resolve_library", context7ResolveLibraryExecutor],

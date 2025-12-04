@@ -32,8 +32,8 @@ export interface ArtifactMetadata {
   updatedAt?: Date;
   /** Task ID that generated this artifact */
   taskId?: string;
-  /** Description of the artifact */
-  description?: string;
+  /** Description of the artifact (Phase 0.3: Now required) */
+  description: string; // Made required - agents must explain what each file does
   /** Tags for categorization */
   tags?: string[];
   /** Custom metadata */
@@ -78,10 +78,10 @@ export const ArtifactSchema = z.object({
     createdAt: z.date().optional(),
     updatedAt: z.date().optional(),
     taskId: z.string().optional(),
-    description: z.string().optional(),
+    description: z.string(), // Phase 0.3: Made required (removed .optional())
     tags: z.array(z.string()).optional(),
     custom: z.record(z.unknown()).optional(),
-  }).default({}),
+  }), // Phase 0.3: Removed .default({}) since description is now required
   version: z.number().int().nonnegative().default(1),
 });
 
@@ -99,6 +99,13 @@ export class ArtifactRegistry {
     const path = artifact.path || artifact.filename;
     const existing = this.getByPath(path);
 
+    // Phase 0.3: Ensure description is always provided
+    const description: string = artifact.metadata?.description || existing?.metadata.description || `File: ${artifact.filename}`;
+
+    // Destructure to exclude description from spreads
+    const { description: _ignoredDesc1, ...existingMetaWithoutDesc } = existing?.metadata || {} as any;
+    const { description: _ignoredDesc2, ...artifactMetaWithoutDesc } = artifact.metadata || {} as any;
+
     const newArtifact: Artifact = ArtifactSchema.parse({
       id: existing?.id || artifact.id || nanoid(),
       filename: artifact.filename,
@@ -107,8 +114,9 @@ export class ArtifactRegistry {
       mimeType: artifact.mimeType || this.inferMimeType(artifact.filename),
       type: artifact.type || this.inferArtifactType(artifact.filename, path),
       metadata: {
-        ...existing?.metadata,
-        ...artifact.metadata,
+        ...existingMetaWithoutDesc,
+        ...artifactMetaWithoutDesc,
+        description, // Phase 0.3: Description is now required and guaranteed to be a string
         createdAt: existing?.metadata.createdAt || new Date(),
         updatedAt: new Date(),
       },
@@ -271,7 +279,7 @@ export const ArtifactHelpers = {
       type: 'plan',
       mimeType: 'text/markdown',
       metadata: {
-        description: config.description,
+        description: config.description || `MDAP execution plan: ${filename}`, // Phase 0.3: Provide default description
         agentId: config.agentId,
         agentRole: config.agentRole,
         taskId: config.taskId,
@@ -298,7 +306,7 @@ export const ArtifactHelpers = {
       content: config.content,
       type: 'code',
       metadata: {
-        description: config.description,
+        description: config.description || `Code file: ${config.filename}`, // Phase 0.3: Provide default description
         agentId: config.agentId,
         agentRole: config.agentRole,
         tags: ['code'],

@@ -9,6 +9,7 @@ import { PlansViewer } from "@/components/work/plans-viewer";
 import { getProjectById } from "@/lib/project-storage";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { LoadingScreen } from "@/components/ui/loading-screen";
 import type { Artifact } from "@codalyn/accuralai";
 
 interface WorkPageClientProps {
@@ -30,6 +31,7 @@ export default function WorkPageClient({
   const [viewMode, setViewMode] = useState<ViewMode>("chat");
   const [plans, setPlans] = useState<Artifact[]>([]);
   const [currentPlan, setCurrentPlan] = useState<Artifact | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(true);
 
   useEffect(() => {
     // If projectName wasn't provided by the server (non-authenticated user),
@@ -171,9 +173,16 @@ export default function WorkPageClient({
       </aside>
 
       {/* Right Main Area - Preview */}
-      <main className="flex-1 overflow-hidden bg-background">
-        <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-muted-foreground">Starting preview…</div>}>
-          <Preview projectId={projectId} onRequestFix={handleRequestFix} />
+      <main className="flex-1 overflow-hidden bg-background relative">
+        {isPreviewLoading && (
+          <LoadingScreen message="Starting preview..." />
+        )}
+        <Suspense fallback={<LoadingScreen message="Starting preview..." />}>
+          <Preview 
+            projectId={projectId} 
+            onRequestFix={handleRequestFix}
+            onLoadingChange={setIsPreviewLoading}
+          />
         </Suspense>
       </main>
     </div>

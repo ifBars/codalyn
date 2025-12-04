@@ -2,7 +2,6 @@ import { EntitySpec, EntityField, FieldType } from "@codalyn/dsl";
 import { pascalCase, camelCase } from "@codalyn/shared";
 
 export function generateDrizzleSchema(entity: EntitySpec): string {
-  const entityName = pascalCase(entity.name);
   const tableName = camelCase(entity.name) + "Table";
   const columns = entity.fields.map((field) => generateColumn(field)).join("\n  ");
 

@@ -1,4 +1,3 @@
-import { z } from "zod";
 import { AppSpecSchema, type AppSpec } from "./schemas";
 
 export interface ParseResult {

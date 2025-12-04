@@ -5,19 +5,17 @@ import {
   projectTemplateTree,
   templateRootFiles,
 } from "./project-template";
+import type { LogEntry } from "@codalyn/sandbox";
+import { WebContainerManager as SandboxWebContainerManager } from "@codalyn/sandbox";
 
 /**
  * WebContainer Manager for running Vite + React + Tailwind projects in-browser
- * We should abstract this to the sandbox package for maintainability
+ * Delegates core operations to @codalyn/sandbox package while maintaining
+ * studio-specific functionality (project templates, path aliases, error extraction)
  */
 export class WebContainerManager {
-  private static instance: WebContainer | null = null;
-  private static bootPromise: Promise<WebContainer> | null = null;
-  private static devProcess: any | null = null;
-  private static serverUrl: string | null = null;
   private static initPromise: Promise<{ container: WebContainer; url: string }> | null = null;
   private static isInitialized: boolean = false;
-  private static errorCallback: ((error: string) => void) | null = null;
   private static currentProjectFilesHash: string | null = null;
   private static currentProjectId: string | null = null;
 
@@ -26,21 +24,22 @@ export class WebContainerManager {
    * @param callback Function to call with error message
    */
   static setErrorCallback(callback: ((error: string) => void) | null): void {
-    this.errorCallback = callback;
+    SandboxWebContainerManager.setErrorCallback(callback);
+  }
+
+  /**
+   * Get console logs with optional filtering
+   */
+  static async getConsoleLogs(options?: {
+    limit?: number;
+    level?: 'all' | 'error' | 'warn' | 'info';
+    since?: number;
+  }): Promise<LogEntry[]> {
+    return SandboxWebContainerManager.getConsoleLogs(options);
   }
 
   static async getInstance(): Promise<WebContainer> {
-    if (this.instance) {
-      return this.instance;
-    }
-
-    if (this.bootPromise) {
-      return this.bootPromise;
-    }
-
-    this.bootPromise = WebContainer.boot();
-    this.instance = await this.bootPromise;
-    return this.instance;
+    return SandboxWebContainerManager.getInstance();
   }
 
   /**
@@ -57,8 +56,10 @@ export class WebContainerManager {
     const isDifferentProject = (filesHash && filesHash !== this.currentProjectFilesHash) ||
       (projectId && projectId !== this.currentProjectId);
 
+    const serverUrl = SandboxWebContainerManager.getServerUrl();
+
     // If already initialized but switching to a different project, replace files
-    if (this.isInitialized && this.serverUrl && this.devProcess && isDifferentProject && savedFiles) {
+    if (this.isInitialized && serverUrl && isDifferentProject && savedFiles) {
       console.log(`[init] Switching to different project (ID: ${projectId}), replacing files...`);
       try {
         // Replace project files
@@ -66,22 +67,20 @@ export class WebContainerManager {
         this.currentProjectFilesHash = filesHash;
         this.currentProjectId = projectId || null;
         const container = await this.getInstance();
-        return { container, url: this.serverUrl };
+        return { container, url: serverUrl };
       } catch (error) {
         console.warn(`[init] Failed to replace project files, reinitializing:`, error);
         // Fall through to reinitialize if replace fails
         this.isInitialized = false;
-        this.serverUrl = null;
-        this.devProcess = null;
         this.currentProjectFilesHash = null;
         this.currentProjectId = null;
       }
     }
 
     // If already initialized with the same project, return existing instance
-    if (this.isInitialized && this.serverUrl && this.devProcess && !isDifferentProject) {
+    if (this.isInitialized && serverUrl && !isDifferentProject) {
       const container = await this.getInstance();
-      return { container, url: this.serverUrl };
+      return { container, url: serverUrl };
     }
 
     // If initialization is in progress, wait for it to complete
@@ -116,24 +115,6 @@ export class WebContainerManager {
     container: WebContainer;
     url: string;
   }> {
-    const container = await this.getInstance();
-
-    // Kill any existing dev process before starting a new one
-    if (this.devProcess) {
-      console.log(`[init] Killing existing dev process...`);
-      try {
-        this.devProcess.kill();
-        // Wait a bit for the process to terminate
-        await new Promise(resolve => setTimeout(resolve, 500));
-      } catch (error) {
-        console.warn(`[init] Error killing existing dev process:`, error);
-      }
-      this.devProcess = null;
-      this.serverUrl = null;
-      this.isInitialized = false; // Reset initialization state since we're starting fresh
-      this.currentProjectFilesHash = null; // Reset project hash
-      this.currentProjectId = null; // Reset project ID
-    }
 
     // Prepare files to mount - merge template with saved files if provided
     let filesToMount: FileSystemTree;
@@ -273,84 +254,23 @@ export class WebContainerManager {
       filesToMount = projectTemplateTree;
     }
 
-    // Mount the project files
-    await container.mount(filesToMount);
-
-    // Install dependencies
-    console.log("Installing dependencies...");
-
-    // Read package.json to see what dependencies need to be installed
-    let packageJson: any = null;
-    try {
-      const pkgJsonContent = await this.readFile("package.json");
-      packageJson = JSON.parse(pkgJsonContent);
-      const depCount = Object.keys(packageJson.dependencies || {}).length;
-      const devDepCount = Object.keys(packageJson.devDependencies || {}).length;
-      console.log(`[init] Installing ${depCount} dependencies and ${devDepCount} devDependencies...`);
-    } catch (e) {
-      console.warn('[init] Could not read package.json before install:', e);
-    }
-
-    const installProcess = await container.spawn("npm", ["install"]);
-
-    // Wait for install to complete
-    const installExitCode = await installProcess.exit;
-    if (installExitCode !== 0) {
-      throw new Error("Failed to install dependencies");
-    }
-
-    console.log("Starting dev server...");
-
-    // Start dev server
-    const devProcess = await container.spawn("npm", ["run", "dev"]);
-    this.devProcess = devProcess;
-
-    // Capture output to detect when server is ready
-    const outputChunks: string[] = [];
-    let serverUrl: string | null = null;
-    let serverReady = false;
-
-    // Set up server-ready event listener (WebContainer API)
-    // The `on` method returns an unsubscribe function
-    const serverReadyListener = (port: number, url: string) => {
-      console.log(`[server] Server ready event on port ${port} at ${url}`);
-      serverUrl = url;
-      serverReady = true;
-    };
-    const unsubscribeServerReady = container.on("server-ready", serverReadyListener);
-
-    // Also parse output to detect Vite server startup
-    const outputPromise = devProcess.output.pipeTo(
-      new WritableStream({
-        write(data) {
-          // Convert data to string
-          const text = typeof data === 'string'
-            ? data
-            : (data as any) instanceof Uint8Array
-              ? new TextDecoder().decode(data)
-              : String(data);
-
-          outputChunks.push(text);
+    // Use sandbox package to initialize project with files and start dev server
+    const result = await SandboxWebContainerManager.initProject({
+      files: filesToMount,
+      installDeps: true,
+      startDevServer: true,
+      devServerOptions: {
+        command: "npm",
+        args: ["run", "dev"],
+        timeout: 30000,
+        onOutput: (text) => {
+          // Studio-specific error detection and logging
           console.log("[vite]", text);
 
-          // Check for Vite server ready messages
-          // Vite outputs: "Local: http://localhost:5173/" or "➜  Local:   http://localhost:5173/"
-          const viteUrlMatch = text.match(/Local:\s*(https?:\/\/[^\s]+)/i) ||
-            text.match(/➜\s*Local:\s*(https?:\/\/[^\s]+)/i) ||
-            text.match(/ready in \d+ms/i);
-
-          if (viteUrlMatch && !serverReady) {
-            const detectedUrl = viteUrlMatch[1] || `http://localhost:5173`;
-            console.log(`[server] Detected Vite server ready at ${detectedUrl}`);
-            serverUrl = detectedUrl;
-            serverReady = true;
-          }
-
-          // Check for dependency errors and forward to Preview component
+          // Check for dependency errors
           if (text.includes('dependencies are imported but could not be resolved') ||
             text.includes('The following dependencies') ||
             text.includes('Are they installed?')) {
-            // This will be caught by the Preview component's error detection
             console.warn(`[vite] Dependency error detected: ${text.substring(0, 500)}`);
           }
 
@@ -367,148 +287,16 @@ export class WebContainerManager {
               text.includes('Internal Server Error')) {
             const errorMessage = WebContainerManager.extractInternalServerError(text);
             console.error(`[vite] Internal server error detected: ${errorMessage}`);
-            
-            // Trigger the error callback if registered
-            if (WebContainerManager.errorCallback) {
-              const formattedError = `Internal Server Error detected in Vite dev server:\n\n${errorMessage}`;
-              WebContainerManager.errorCallback(formattedError);
-            }
           }
-        },
-      })
-    ).catch((err) => {
-      console.error("[vite] Output stream error:", err);
+        }
+      }
     });
 
-    // Wait for server to be ready with multiple strategies
-    const waitForServer = (): Promise<string> => {
-      return new Promise((resolve, reject) => {
-        let checkInterval: NodeJS.Timeout;
-        let timeout: NodeJS.Timeout;
+    const container = result.container;
+    const url = result.url || `http://localhost:5173`;
 
-        // Define cleanup function (using function declaration for hoisting)
-        function cleanup() {
-          if (checkInterval) clearInterval(checkInterval);
-          if (timeout) clearTimeout(timeout);
-          // Call the unsubscribe function returned by container.on()
-          if (unsubscribeServerReady) {
-            unsubscribeServerReady();
-          }
-        }
-
-        checkInterval = setInterval(() => {
-          if (serverReady && serverUrl) {
-            cleanup();
-            resolve(serverUrl);
-          }
-        }, 100);
-
-        timeout = setTimeout(() => {
-          cleanup();
-          // Check if we have any output that suggests server started
-          const allOutput = outputChunks.join('');
-          const viteUrlMatch = allOutput.match(/Local:\s*(https?:\/\/[^\s]+)/i) ||
-            allOutput.match(/➜\s*Local:\s*(https?:\/\/[^\s]+)/i);
-
-          if (viteUrlMatch) {
-            const url = viteUrlMatch[1] || `http://localhost:5173`;
-            console.log(`[server] Server detected from output after timeout: ${url}`);
-            resolve(url);
-            return;
-          }
-
-          // Check if process is still running (exit promise hasn't resolved = still running)
-          Promise.race([
-            devProcess.exit,
-            new Promise<number>((resolve) => setTimeout(() => resolve(-999), 100))
-          ]).then((exitCode) => {
-            if (exitCode === -999) {
-              // Timeout means process is still running (exit promise didn't resolve)
-              const url = `http://localhost:5173`;
-              console.log(`[server] Process still running, assuming server on default port: ${url}`);
-              resolve(url);
-            } else if (exitCode === 0) {
-              // Process exited successfully (unusual for dev server, but might be OK)
-              const url = `http://localhost:5173`;
-              console.log(`[server] Process exited with code 0, assuming server was ready: ${url}`);
-              resolve(url);
-            } else {
-              reject(new Error(`Dev server exited with code ${exitCode}. Output: ${allOutput.slice(-2000)}`));
-            }
-          }).catch(() => {
-            // Can't check exit code, assume server might be running
-            const url = `http://localhost:5173`;
-            console.log(`[server] Cannot verify exit code, assuming server on default port: ${url}`);
-            resolve(url);
-          });
-        }, 30000); // 30 second timeout
-
-        // Also check for process exit errors
-        devProcess.exit.then((exitCode) => {
-          if (exitCode !== null && exitCode !== 0) {
-            cleanup();
-            const allOutput = outputChunks.join('');
-            reject(new Error(`Dev server exited with code ${exitCode}. Output: ${allOutput.slice(-2000)}`));
-          }
-        }).catch(() => {
-          // Process still running, continue waiting
-        });
-      });
-    };
-
-    let url: string;
-    try {
-      url = await waitForServer();
-      this.serverUrl = url;
-      console.log(`[server] Server confirmed ready at ${url}`);
-      return { container, url };
-    } catch (error: any) {
-      // Last resort: check output one more time
-      const allOutput = outputChunks.join('');
-      const viteUrlMatch = allOutput.match(/Local:\s*(https?:\/\/[^\s]+)/i) ||
-        allOutput.match(/➜\s*Local:\s*(https?:\/\/[^\s]+)/i);
-
-      if (viteUrlMatch) {
-        url = viteUrlMatch[1] || `http://localhost:5173`;
-        this.serverUrl = url;
-        console.log(`[server] Server detected from output in error handler: ${url}`);
-        return { container, url };
-      }
-
-      // Check if process is still running (exit promise hasn't resolved = still running)
-      try {
-        const exitCode = await Promise.race([
-          devProcess.exit,
-          new Promise<number>((resolve) => setTimeout(() => resolve(-999), 1000))
-        ]);
-
-        if (exitCode === -999) {
-          // Timeout means process is still running (exit promise didn't resolve)
-          url = `http://localhost:5173`;
-          this.serverUrl = url;
-          console.log(`[server] Process appears to be running, using default URL: ${url}`);
-          return { container, url };
-        } else if (exitCode === 0) {
-          // Process exited with 0 (unusual but might be OK)
-          url = `http://localhost:5173`;
-          this.serverUrl = url;
-          console.log(`[server] Process exited with 0, assuming server was ready: ${url}`);
-          return { container, url };
-        }
-        // Non-zero exit code means failure, which is already handled above
-      } catch {
-        // Can't check, assume server might be running
-        url = `http://localhost:5173`;
-        this.serverUrl = url;
-        console.log(`[server] Cannot verify process status, using default URL: ${url}`);
-        return { container, url };
-      }
-
-      throw new Error(
-        `Failed to start dev server: ${error?.message || error}\n` +
-        `Output: ${allOutput.slice(-2000)}`
-      );
-    }
+    console.log(`[init] Project initialized successfully at ${url}`);
+    return { container, url };
   }
 
   /**
@@ -516,55 +304,7 @@ export class WebContainerManager {
    * Automatically creates parent directories if they don't exist
    */
   static async writeFile(path: string, content: string): Promise<void> {
-    const container = await this.getInstance();
-
-    // Normalize path - ensure consistent forward slashes
-    // Remove leading slash if present (WebContainer uses relative paths from root)
-    const normalizedPath = path.replace(/^\/+/, '').replace(/\/+/g, '/');
-
-    // Extract directory path and create it if needed
-    const dirPath = normalizedPath.split('/').slice(0, -1).join('/');
-    if (dirPath) {
-      // Create parent directories recursively
-      // First try recursive mkdir (most efficient)
-      try {
-        await container.fs.mkdir(dirPath, { recursive: true });
-      } catch (e: any) {
-        // If recursive fails, try creating directories one by one as fallback
-        // This handles cases where recursive might not work as expected
-        const parts = dirPath.split('/').filter(Boolean);
-        let currentPath = '';
-        for (const part of parts) {
-          currentPath = currentPath ? `${currentPath}/${part}` : part;
-          try {
-            await container.fs.mkdir(currentPath);
-          } catch (dirError: any) {
-            // Only ignore "directory already exists" errors
-            const isExistsError =
-              dirError?.code === 'EEXIST' ||
-              dirError?.message?.includes('already exists') ||
-              dirError?.message?.includes('EEXIST');
-
-            if (!isExistsError) {
-              // Re-throw non-exists errors
-              throw dirError;
-            }
-            // Otherwise, directory exists, continue
-          }
-        }
-      }
-    }
-
-    // Write the file - wrap in try-catch to provide better error messages
-    try {
-      await container.fs.writeFile(normalizedPath, content);
-    } catch (error: any) {
-      // Provide more context if write fails
-      throw new Error(
-        `Failed to write file "${normalizedPath}": ${error?.message || error}. ` +
-        `Directory path: "${dirPath}"`
-      );
-    }
+    return SandboxWebContainerManager.writeFile(path, content);
   }
 
   /**
@@ -578,388 +318,28 @@ export class WebContainerManager {
     packages: string[], 
     options?: { dev?: boolean; retryIndividual?: boolean }
   ): Promise<string | null> {
-    const container = await this.getInstance();
-    const retryIndividual = options?.retryIndividual ?? false;
-    const isDev = options?.dev ?? false;
-
-    console.log(`[install] Installing packages: ${packages.join(', ')} (${isDev ? 'dev' : 'production'} dependencies)`);
-
-    // First, try installing all packages together
-    const installArgs = ["install", isDev ? "--save-dev" : "--save", ...packages];
-    const installProcess = await container.spawn("npm", installArgs);
-
-    // Capture output for error reporting and verification
-    const outputChunks: string[] = [];
-    let streamClosed = false;
-    let installSuccess = false;
-
-    const outputPromise = installProcess.output.pipeTo(
-      new WritableStream({
-        write(data) {
-          // Convert data to string - WebContainer output is typically string
-          const text = typeof data === 'string'
-            ? data
-            : (data as any) instanceof Uint8Array
-              ? new TextDecoder().decode(data)
-              : String(data);
-
-          outputChunks.push(text);
-          console.log("[npm install]", text);
-
-          // Check for success indicators in output
-          if (text.includes('added') || text.includes('up to date') || text.includes('packages')) {
-            installSuccess = true;
-          }
-        },
-        close() {
-          streamClosed = true;
-        },
-        abort(err) {
-          console.error("[npm install] Stream aborted:", err);
-          streamClosed = true;
-        },
-      })
-    ).catch((err) => {
-      console.error("[npm install] Stream error:", err);
-      streamClosed = true;
-    });
-
-    // Wait for process to exit with timeout (npm install can take a while, but shouldn't hang forever)
-    const INSTALL_TIMEOUT = 120000; // 2 minutes - reasonable for most packages
-    const exitCode = await Promise.race([
-      installProcess.exit,
-      new Promise<number>((_, reject) => 
-        setTimeout(() => reject(new Error(`npm install timed out after ${INSTALL_TIMEOUT}ms`)), INSTALL_TIMEOUT)
-      )
-    ]).catch((error) => {
-      // If timeout occurs, kill the process and throw
-      console.error("[npm install] Timeout occurred, killing process");
-      installProcess.kill();
-      throw error;
-    });
-
-    // Give a small delay to ensure all output is flushed
-    await new Promise(resolve => setTimeout(resolve, 200));
-
-    // Wait for stream to close (with shorter timeout since process already exited)
-    try {
-      await Promise.race([
-        outputPromise,
-        new Promise((resolve) => setTimeout(resolve, 2000)) // 2 second timeout for stream flush
-      ]);
-    } catch (err) {
-      // Stream might have already closed, that's okay
-      console.warn("[npm install] Stream wait warning:", err);
-    }
-
-    // Combine all output for analysis
-    const allOutput = outputChunks.join('');
-
-    if (exitCode !== 0) {
-      // Check if this is a 404 error (package not found)
-      const is404Error = allOutput.includes('404') ||
-        allOutput.includes('Not found') ||
-        allOutput.includes('is not in this registry');
-
-      if (is404Error) {
-        // Extract which packages failed (404 errors)
-        const failedPackages: string[] = [];
-        const successfulPackages: string[] = [];
-
-        // Try to identify which packages failed by checking error messages
-        for (const pkg of packages) {
-          // Check if this package is mentioned in 404 errors
-          const pkgEscaped = pkg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const pkgErrorPattern = new RegExp(`404.*${pkgEscaped}|${pkgEscaped}.*404|${pkgEscaped}.*not found|not found.*${pkgEscaped}`, 'i');
-
-          if (pkgErrorPattern.test(allOutput)) {
-            failedPackages.push(pkg);
-            console.warn(`[install] Package not found (404): ${pkg}`);
-          } else {
-            successfulPackages.push(pkg);
-          }
-        }
-
-        // If we have some successful packages, try installing them individually
-        if (successfulPackages.length > 0 && failedPackages.length > 0 && !retryIndividual) {
-          console.log(`[install] Some packages failed (404). Retrying with valid packages: ${successfulPackages.join(', ')}`);
-
-          // Install successful packages individually (with retry flag to prevent recursion)
-          for (const pkg of successfulPackages) {
-            try {
-              await this.installPackage([pkg], { retryIndividual: true, dev: isDev });
-            } catch (individualError) {
-              console.warn(`[install] Failed to install ${pkg} individually:`, individualError);
-              failedPackages.push(pkg);
-            }
-          }
-
-          // If we successfully installed at least some packages, don't throw
-          // Just log a warning about the failed ones
-          const actuallySucceeded = successfulPackages.filter(p => !failedPackages.includes(p));
-          if (actuallySucceeded.length > 0) {
-            console.warn(`[install] Some packages could not be installed: ${failedPackages.join(', ')}`);
-            console.log(`[install] Successfully installed: ${actuallySucceeded.join(', ')}`);
-            // Read and return updated package.json even for partial success
-            try {
-              return await this.readFile("package.json");
-            } catch {
-              return null;
-            }
-          }
-        }
-
-        // If all packages failed or we couldn't determine which ones succeeded
-        // Try installing packages individually to get better error messages (only if not already retrying)
-        if (packages.length > 1 && !retryIndividual) {
-          console.log(`[install] Attempting to install packages individually to identify failures...`);
-          const individualResults: { pkg: string; success: boolean }[] = [];
-
-          for (const pkg of packages) {
-            try {
-              await this.installPackage([pkg], { retryIndividual: true, dev: isDev }); // Set retry flag to prevent infinite recursion
-              individualResults.push({ pkg, success: true });
-            } catch (individualError: any) {
-              individualResults.push({ pkg, success: false });
-              console.warn(`[install] Failed to install ${pkg}:`, individualError?.message || individualError);
-            }
-          }
-
-          const succeeded = individualResults.filter(r => r.success).map(r => r.pkg);
-          const failed = individualResults.filter(r => !r.success).map(r => r.pkg);
-
-          if (succeeded.length > 0) {
-            console.log(`[install] Successfully installed: ${succeeded.join(', ')}`);
-            if (failed.length > 0) {
-              console.warn(`[install] Failed to install: ${failed.join(', ')}`);
-              // Don't throw if at least some packages succeeded
-              // Read and return updated package.json
-              try {
-                return await this.readFile("package.json");
-              } catch {
-                return null;
-              }
-            }
-          }
-        }
-      }
-
-      // If we get here, installation failed completely
-      // Try to extract meaningful error from output
-      const errorMatch = allOutput.match(/npm ERR!.*/g);
-      const errorDetails = errorMatch
-        ? errorMatch.join('\n')
-        : allOutput.slice(-1000); // Last 1000 chars if no npm ERR! found
-
-      // If we have no output captured, try to get stderr if available
-      const finalErrorDetails = errorDetails || allOutput || 'No error output captured';
-
-      throw new Error(
-        `Package installation failed with exit code ${exitCode}.\n` +
-        `Packages: ${packages.join(', ')}\n` +
-        `Error details:\n${finalErrorDetails}`
-      );
-    }
-
-    // Log full output for debugging
-    if (allOutput) {
-      console.log(`[install] npm install output:\n${allOutput.slice(-500)}`); // Last 500 chars
-    }
-
-    console.log(`[install] Successfully installed: ${packages.join(', ')}`);
-
-    // Read updated package.json early so we can return it later
-    let updatedPackageJson: string | null = null;
-    try {
-      const packageJsonPath = "package.json";
-      updatedPackageJson = await this.readFile(packageJsonPath);
-      const packageJson = JSON.parse(updatedPackageJson);
-
-      // Check if packages are in dependencies or devDependencies
-      const allDeps = {
-        ...(packageJson.dependencies || {}),
-        ...(packageJson.devDependencies || {})
-      };
-
-      const missingPackages: string[] = [];
-      for (const pkg of packages) {
-        // Extract package name (handle scoped packages like @types/node)
-        const pkgName = pkg.split('@')[0] === '' ? pkg.split('@').slice(0, 2).join('@') : pkg.split('@')[0];
-        if (!allDeps[pkgName] && !allDeps[pkg]) {
-          missingPackages.push(pkg);
-        }
-      }
-
-      if (missingPackages.length > 0) {
-        console.warn(`[install] Warning: Some packages may not be in package.json: ${missingPackages.join(', ')}`);
-        console.warn(`[install] This might happen if npm install failed silently or packages weren't saved`);
-      } else {
-        console.log(`[install] Verified packages are in package.json`);
-      }
-    } catch (verifyError) {
-      console.warn(`[install] Failed to verify package installation:`, verifyError);
-      // Still try to read package.json even if verification failed
-      try {
-        updatedPackageJson = await this.readFile("package.json");
-      } catch {
-        updatedPackageJson = null;
-      }
-    }
-
-    // After installing packages, we need to trigger Vite to re-optimize dependencies
-    // Vite caches optimized dependencies in node_modules/.vite
-    // Clearing this cache forces Vite to re-optimize on the next request
-    try {
-      // Clear Vite's dependency cache - this is critical for Vite to detect new packages
-      const viteCachePath = "node_modules/.vite";
-      try {
-        await this.rm(viteCachePath, { recursive: true });
-        console.log(`[install] Cleared Vite cache directory`);
-      } catch (rmError: any) {
-        // Cache directory might not exist yet, which is fine
-        if (!rmError?.message?.includes('ENOENT') &&
-          !rmError?.message?.includes('not found') &&
-          !rmError?.message?.includes('ENOTDIR')) {
-          console.warn(`[install] Failed to clear Vite cache:`, rmError);
-        }
-      }
-
-      // Read and rewrite package.json to trigger Vite's file watcher
-      // This ensures Vite detects the package.json change and re-runs dependency optimization
-      try {
-        const packageJsonPath = "package.json";
-        const packageJsonContent = await this.readFile(packageJsonPath);
-        const packageJson = JSON.parse(packageJsonContent);
-
-        // Add a comment or whitespace change to ensure file watcher detects the change
-        // This is more reliable than just reformatting
-        const formattedJson = JSON.stringify(packageJson, null, 2) + '\n';
-        await this.writeFile(packageJsonPath, formattedJson);
-
-        console.log(`[install] Updated package.json to trigger Vite file watcher`);
-      } catch (touchError) {
-        console.warn(`[install] Failed to touch package.json:`, touchError);
-      }
-
-      // Force Vite to re-optimize dependencies
-      // Strategy: Create a temporary import file that Vite will process
-      // IMPORTANT: We NEVER make HTTP requests from the browser due to CORS restrictions
-      // All file operations use WebContainer's file system API
-      // Vite will process the file automatically when accessed through the iframe/preview
-      try {
-        // Wait a moment for package.json change to be detected
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        // Create a temporary import file to force Vite to resolve packages
-        // This ensures Vite processes the imports when the preview refreshes
-        // We use file system operations only - NO HTTP requests
-        try {
-          // Ensure src directory exists
-          try {
-            await container.fs.mkdir("src", { recursive: true });
-          } catch (mkdirError: any) {
-            // Directory might already exist, which is fine
-            if (!mkdirError?.message?.includes('EEXIST') &&
-              !mkdirError?.message?.includes('already exists')) {
-              console.warn(`[install] Failed to create src directory:`, mkdirError);
-            }
-          }
-
-          // Create a temporary file that imports all newly installed packages
-          // This forces Vite to resolve and optimize them when the file is accessed
-          const tempImportPath = "src/__vite_temp_import__.ts";
-          const importStatements = packages
-            .map(pkg => {
-              // Extract package name (handle scoped packages like @types/node)
-              const pkgName = pkg.split('@')[0] === ''
-                ? pkg.split('@').slice(0, 2).join('@')
-                : pkg.split('@')[0];
-              return `import '${pkgName}';`;
-            })
-            .join('\n');
-
-          // Create temporary import file using file system API (NOT HTTP)
-          await this.writeFile(tempImportPath, importStatements);
-          console.log(`[install] Created temporary import file to force Vite optimization`);
-          console.log(`[install] Vite will process dependencies when the preview refreshes`);
-
-          // Clean up the temporary file after Vite has had time to process it
-          // Give it enough time for Vite to optimize dependencies
-          setTimeout(async () => {
-            try {
-              await this.rm(tempImportPath);
-              console.log(`[install] Cleaned up temporary import file`);
-            } catch (e) {
-              // Ignore cleanup errors
-            }
-          }, 10000); // Give Vite time to process the imports
-
-          // CRITICAL: We do NOT make HTTP requests from browser due to CORS
-          // The preview iframe will trigger Vite to process the file when it loads/refreshes
-          // All file verification uses WebContainer's file system API, not fetch()
-        } catch (tempFileError) {
-          console.warn(`[install] Failed to create temp import file:`, tempFileError);
-        }
-      } catch (optimizeError) {
-        // Silently handle optimization errors - they're not critical
-        // Package installation succeeded, optimization is just a performance improvement
-        console.warn(`[install] Failed to force Vite optimization (non-critical):`, optimizeError);
-      }
-
-      // Also try to verify node_modules exists for at least one package
-      // This helps confirm installation actually happened
-      if (packages.length > 0) {
-        try {
-          const firstPkg = packages[0].split('@')[0] === ''
-            ? packages[0].split('@').slice(0, 2).join('@')
-            : packages[0].split('@')[0];
-          const nodeModulesPath = `node_modules/${firstPkg}`;
-          try {
-            await this.readdir(nodeModulesPath);
-            console.log(`[install] Verified package exists in node_modules: ${firstPkg}`);
-          } catch {
-            console.warn(`[install] Warning: Could not verify ${firstPkg} in node_modules`);
-          }
-        } catch (checkError) {
-          // Ignore - verification is optional
-        }
-      }
-    } catch (error) {
-      console.warn(`[install] Failed to trigger Vite re-optimization:`, error);
-      // Don't throw - package installation succeeded, this is just optimization
-    }
-
-    // Return the updated package.json content so caller can save it to project storage
-    return updatedPackageJson;
+    return SandboxWebContainerManager.installPackage(packages, options);
   }
 
   /**
    * Read a file from the container
    */
   static async readFile(path: string): Promise<string> {
-    const container = await this.getInstance();
-    return await container.fs.readFile(path, "utf-8");
+    return SandboxWebContainerManager.readFile(path);
   }
 
   /**
    * List directory contents
    */
   static async readdir(path: string): Promise<string[]> {
-    const container = await this.getInstance();
-    const entries = await container.fs.readdir(path, { withFileTypes: true });
-    return entries.map((e) => e.name);
+    return SandboxWebContainerManager.readdir(path);
   }
 
   /**
    * Remove a file or directory
    */
   static async rm(path: string, options?: { recursive?: boolean }): Promise<void> {
-    const container = await this.getInstance();
-    if (options?.recursive) {
-      await container.fs.rm(path, { recursive: true, force: true });
-    } else {
-      await container.fs.rm(path);
-    }
+    return SandboxWebContainerManager.rm(path, options);
   }
 
   /**
@@ -967,103 +347,12 @@ export class WebContainerManager {
    * Also installs dependencies from package.json if present
    */
   static async replaceProjectFiles(fileMap: Record<string, string>): Promise<void> {
-    const container = await this.getInstance();
-    try {
-      await this.rm("src", { recursive: true });
-    } catch {
-      // Ignore missing src dir
-    }
-
-    for (const rootFile of templateRootFiles) {
-      try {
-        await container.fs.rm(rootFile);
-      } catch {
-        // Ignore
-      }
-    }
-
-    for (const [path, content] of Object.entries(fileMap)) {
-      await this.writeFile(path, content);
-    }
-
-    // After replacing files, install dependencies from package.json
-    // This ensures all packages are installed when opening an existing project
-    try {
-      const packageJsonContent = await this.readFile("package.json");
-      const packageJson = JSON.parse(packageJsonContent);
-      const depCount = Object.keys(packageJson.dependencies || {}).length;
-      const devDepCount = Object.keys(packageJson.devDependencies || {}).length;
-
-      if (depCount > 0 || devDepCount > 0) {
-        console.log(`[replaceProjectFiles] Installing ${depCount} dependencies and ${devDepCount} devDependencies...`);
-
-        const installProcess = await container.spawn("npm", ["install"]);
-
-        // Capture output for debugging
-        const outputChunks: string[] = [];
-        installProcess.output.pipeTo(
-          new WritableStream({
-            write(data) {
-              const text = typeof data === 'string'
-                ? data
-                : (data as any) instanceof Uint8Array
-                  ? new TextDecoder().decode(data)
-                  : String(data);
-              outputChunks.push(text);
-              console.log("[npm install]", text);
-            },
-          })
-        ).catch((err) => {
-          console.error("[npm install] Stream error:", err);
-        });
-
-        // Wait for install to complete
-        const installExitCode = await installProcess.exit;
-
-        // Give a small delay to ensure all output is flushed
-        await new Promise(resolve => setTimeout(resolve, 200));
-
-        if (installExitCode !== 0) {
-          const allOutput = outputChunks.join('');
-          console.error(`[replaceProjectFiles] npm install failed with exit code ${installExitCode}`);
-          console.error(`[replaceProjectFiles] Output: ${allOutput.slice(-1000)}`);
-          // Don't throw - allow project to load even if install fails
-          // The user can manually install packages or fix issues
-        } else {
-          console.log(`[replaceProjectFiles] Successfully installed dependencies`);
-
-          // Clear Vite cache to force re-optimization of dependencies
-          // This ensures Vite detects newly installed packages
-          try {
-            const viteCachePath = "node_modules/.vite";
-            await this.rm(viteCachePath, { recursive: true });
-            console.log(`[replaceProjectFiles] Cleared Vite cache for dependency re-optimization`);
-          } catch (cacheError: any) {
-            // Cache directory might not exist yet, which is fine
-            if (!cacheError?.message?.includes('ENOENT') &&
-              !cacheError?.message?.includes('not found') &&
-              !cacheError?.message?.includes('ENOTDIR')) {
-              console.warn(`[replaceProjectFiles] Failed to clear Vite cache:`, cacheError);
-            }
-          }
-        }
-      } else {
-        console.log(`[replaceProjectFiles] No dependencies to install`);
-      }
-    } catch (error: any) {
-      // If package.json doesn't exist or can't be read, that's okay
-      // The project might not have dependencies yet
-      if (error?.message?.includes('ENOENT') || error?.message?.includes('not found')) {
-        console.log(`[replaceProjectFiles] No package.json found, skipping dependency installation`);
-      } else {
-        console.warn(`[replaceProjectFiles] Failed to install dependencies:`, error);
-        // Don't throw - allow project to load even if install fails
-      }
-    }
+    return SandboxWebContainerManager.replaceProjectFiles(fileMap);
   }
 
   /**
    * Extract internal server error details from Vite output
+   * Studio-specific error extraction logic
    * @param outputText The output text from Vite
    * @returns Formatted error message
    */
@@ -1125,6 +414,7 @@ export class WebContainerManager {
 
   /**
    * Extract missing package names from Vite dependency error messages
+   * Studio-specific error extraction logic
    * @param errorMessage The error message from Vite
    * @returns Array of package names that need to be installed
    */
@@ -1228,7 +518,7 @@ export class WebContainerManager {
 
   /**
    * Fix path alias configuration in vite.config.ts and tsconfig.json
-   * This is needed when code uses @/ imports but the config files don't have the alias set up
+   * Studio-specific Vite/TypeScript config fixing logic
    */
   static async fixPathAliasConfig(): Promise<void> {
     const container = await this.getInstance();
@@ -1411,7 +701,8 @@ export default defineConfig({
       }
 
       // After fixing config, trigger Vite to reload
-      if (this.serverUrl) {
+      const serverUrl = SandboxWebContainerManager.getServerUrl();
+      if (serverUrl) {
         try {
           // Touch a file to trigger Vite reload
           await new Promise(resolve => setTimeout(resolve, 500));

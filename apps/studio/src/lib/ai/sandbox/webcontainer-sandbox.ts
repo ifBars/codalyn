@@ -1,43 +1,39 @@
 /**
  * WebContainer implementation of SandboxInterface
- * Bridges the new Agent system with WebContainerManager
+ * Uses WebContainerSandbox from @codalyn/sandbox package directly
  */
 
-import { SandboxInterface, SandboxProcess } from "@codalyn/sandbox";
-import { WebContainerManager } from "../../webcontainer-manager";
+import { SandboxInterface, SandboxProcess, LogEntry, WebContainerSandbox as SandboxWebContainerSandbox, FileWatcher, FileSystemListener } from "@codalyn/sandbox";
 
 export class WebContainerSandbox implements SandboxInterface {
+    private sandbox: SandboxWebContainerSandbox;
+
+    constructor() {
+        this.sandbox = new SandboxWebContainerSandbox();
+    }
+
     async readFile(path: string): Promise<string> {
-        return WebContainerManager.readFile(path);
+        return this.sandbox.readFile(path);
     }
 
     async writeFile(path: string, content: string): Promise<void> {
-        return WebContainerManager.writeFile(path, content);
+        return this.sandbox.writeFile(path, content);
     }
 
     async readdir(path: string): Promise<string[]> {
-        return WebContainerManager.readdir(path);
+        return this.sandbox.readdir(path);
     }
 
     async deletePath(path: string, options?: { recursive?: boolean }): Promise<void> {
-        return WebContainerManager.rm(path, options);
+        return this.sandbox.deletePath(path, options);
     }
 
     async mkdir(path: string, options?: { recursive?: boolean }): Promise<void> {
-        const container = await WebContainerManager.getInstance();
-        if (options?.recursive) {
-            await container.fs.mkdir(path, { recursive: true });
-        } else {
-            await container.fs.mkdir(path);
-        }
+        return this.sandbox.mkdir(path, options);
     }
 
     async glob(pattern: string): Promise<string[]> {
-        // Simple glob implementation - can be enhanced later
-        // For now, just list all files recursively and filter
-        const allFiles = await this.listAllFiles(".");
-        const regex = this.globToRegex(pattern);
-        return allFiles.filter(file => regex.test(file));
+        return this.sandbox.glob(pattern);
     }
 
     async runCommand(
@@ -47,93 +43,59 @@ export class WebContainerSandbox implements SandboxInterface {
             env?: Record<string, string>;
             timeout?: number;
             background?: boolean;
+            output?: boolean;
+            terminal?: { cols: number; rows: number };
         }
     ): Promise<SandboxProcess> {
-        const container = await WebContainerManager.getInstance();
+        return this.sandbox.runCommand(command, options);
+    }
 
-        // Parse command into program and args
-        const parts = command.split(" ");
-        const program = parts[0];
-        const args = parts.slice(1);
-
-        const process = await container.spawn(program, args, {
-            cwd: options?.cwd,
-            env: options?.env,
-        });
-
-        // Convert WebContainer output to ReadableStream<string>
-        const outputStream = new ReadableStream<string>({
-            async start(controller) {
-                try {
-                    const reader = process.output.getReader();
-                    while (true) {
-                        const { done, value } = await reader.read();
-                        if (done) break;
-
-                        // Convert Uint8Array to string if needed
-                        const text = typeof value === "string"
-                            ? value
-                            : new TextDecoder().decode(value);
-                        controller.enqueue(text);
-                    }
-                    controller.close();
-                } catch (error) {
-                    controller.error(error);
-                }
-            },
-        });
-
-        return {
-            id: `wc-${Date.now()}`,
-            output: outputStream,
-            async kill() {
-                process.kill();
-            },
-        };
+    watch(path: string, options?: { recursive?: boolean }, listener?: FileSystemListener): FileWatcher {
+        return this.sandbox.watch!(path, options, listener);
     }
 
     async getPorts(): Promise<Array<{ port: number; protocol: "http" | "https" }>> {
-        // WebContainer doesn't expose port info directly
-        // Return empty array for now
-        return [];
+        return this.sandbox.getPorts();
     }
 
     async openPort(port: number, protocol?: "http" | "https"): Promise<void> {
-        // WebContainer handles ports automatically
-        // No-op for now
+        return this.sandbox.openPort(port, protocol);
     }
 
     async init(options?: { files?: Record<string, string>; environment?: Record<string, string> }): Promise<void> {
-        // WebContainer is initialized via WebContainerManager.initProject
-        // This is a no-op since initialization happens elsewhere
+        return this.sandbox.init(options);
     }
 
     async destroy(): Promise<void> {
-        // WebContainer instance is managed globally
-        // No-op for now
+        return this.sandbox.destroy();
     }
 
     async getInfo(): Promise<{ type: "webcontainer" | "docker"; ready: boolean }> {
-        return {
-            type: "webcontainer",
-            ready: true,
-        };
+        return this.sandbox.getInfo();
+    }
+
+    async getConsoleLogs(options?: {
+        limit?: number;
+        level?: 'all' | 'error' | 'warn' | 'info';
+        since?: number;
+    }): Promise<LogEntry[]> {
+        return this.sandbox.getConsoleLogs(options);
     }
 
     async installPackage(packages: string[], options?: { dev?: boolean }): Promise<{ success: boolean; output?: string; error?: string }> {
         try {
             console.log(`[AI Debug] WebContainerSandbox.installPackage() - Installing: ${packages.join(', ')} (dev: ${options?.dev ?? false})`);
-            const packageJson = await WebContainerManager.installPackage(packages, { dev: options?.dev ?? false });
+            const result = await this.sandbox.installPackage!(packages, { dev: options?.dev ?? false });
             
-            if (packageJson) {
+            if (result.success) {
                 return {
                     success: true,
-                    output: `Successfully installed packages: ${packages.join(', ')}`,
+                    output: result.output || `Successfully installed packages: ${packages.join(', ')}`,
                 };
             } else {
                 return {
                     success: false,
-                    error: "Package installation completed but package.json could not be read",
+                    error: result.error || "Package installation failed",
                 };
             }
         } catch (error) {
@@ -143,43 +105,5 @@ export class WebContainerSandbox implements SandboxInterface {
                 error: error instanceof Error ? error.message : "Unknown error during package installation",
             };
         }
-    }
-
-    // Helper methods
-    private async listAllFiles(dir: string, prefix: string = ""): Promise<string[]> {
-        const files: string[] = [];
-        try {
-            const entries = await this.readdir(dir);
-            for (const entry of entries) {
-                const fullPath = prefix ? `${prefix}/${entry}` : entry;
-                const entryPath = dir === "." ? entry : `${dir}/${entry}`;
-
-                try {
-                    // Try to read as directory
-                    await this.readdir(entryPath);
-                    // It's a directory, recurse
-                    const subFiles = await this.listAllFiles(entryPath, fullPath);
-                    files.push(...subFiles);
-                } catch {
-                    // It's a file
-                    files.push(fullPath);
-                }
-            }
-        } catch (error) {
-            // Directory doesn't exist or can't be read
-        }
-        return files;
-    }
-
-    private globToRegex(pattern: string): RegExp {
-        // Simple glob to regex conversion
-        // Supports * and **
-        let regexPattern = pattern
-            .replace(/\./g, "\\.")
-            .replace(/\*\*/g, "___DOUBLE_STAR___")
-            .replace(/\*/g, "[^/]*")
-            .replace(/___DOUBLE_STAR___/g, ".*");
-
-        return new RegExp(`^${regexPattern}$`);
     }
 }

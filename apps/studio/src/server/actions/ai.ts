@@ -112,7 +112,7 @@ export async function chatWithAI(
     googleApiKey: accuralaiConfig.googleApiKey,
     sandbox,
     systemPrompt,
-    maxIterations: 10,
+    maxIterations: 25,
   });
   console.log("[AI Debug] Agent created");
 
@@ -208,7 +208,7 @@ export async function* streamChatWithAI(
     googleApiKey: accuralaiConfig.googleApiKey,
     sandbox,
     systemPrompt,
-    maxIterations: 10,
+    maxIterations: 25,
   });
   console.log("[AI Debug] Agent created");
 

@@ -1,4 +1,4 @@
-import { SandboxInterface, SandboxOptions, SandboxProcess, SandboxPort } from "./types";
+import { SandboxInterface, SandboxOptions, SandboxProcess, SandboxPort, LogEntry } from "./types";
 
 /**
  * Mock sandbox implementation for testing and server-side usage
@@ -9,6 +9,8 @@ export class MockSandbox implements SandboxInterface {
   private ports: Map<number, SandboxPort> = new Map();
   private ready = false;
   private processCounter = 0;
+  private consoleLogs: LogEntry[] = [];
+  private readonly MAX_LOG_ENTRIES = 1000;
 
   async init(options?: SandboxOptions): Promise<void> {
     if (options?.files) {
@@ -108,7 +110,7 @@ export class MockSandbox implements SandboxInterface {
     }
   }
 
-  async mkdir(path: string, options?: { recursive?: boolean }): Promise<void> {
+  async mkdir(path: string, _options?: { recursive?: boolean }): Promise<void> {
     if (!this.ready) throw new Error("Sandbox not initialized");
 
     const normalizedPath = path.startsWith("./") ? path.slice(2) : path;
@@ -133,7 +135,7 @@ export class MockSandbox implements SandboxInterface {
 
   async runCommand(
     command: string,
-    options?: {
+    _options?: {
       cwd?: string;
       env?: Record<string, string>;
       timeout?: number;
@@ -149,12 +151,16 @@ export class MockSandbox implements SandboxInterface {
 
     if (command.includes("npm install") || command.includes("bun install")) {
       mockOutput = "✓ Dependencies installed successfully\n";
+      this.addLog('info', mockOutput.trim(), 'package-manager');
     } else if (command.includes("npm run") || command.includes("bun run")) {
       mockOutput = "✓ Command executed successfully\n";
+      this.addLog('info', mockOutput.trim(), 'command');
     } else if (command.includes("git")) {
       mockOutput = "✓ Git command executed\n";
+      this.addLog('info', mockOutput.trim(), 'git');
     } else {
       mockOutput = `✓ Executed: ${command}\n`;
+      this.addLog('info', mockOutput.trim(), 'command');
     }
 
     // Create a readable stream with the mock output
@@ -189,9 +195,52 @@ export class MockSandbox implements SandboxInterface {
     };
   }
 
+  async getConsoleLogs(options?: {
+    limit?: number;
+    level?: 'all' | 'error' | 'warn' | 'info';
+    since?: number;
+  }): Promise<LogEntry[]> {
+    if (!this.ready) throw new Error("Sandbox not initialized");
+
+    let logs = [...this.consoleLogs];
+
+    // Filter by timestamp if provided
+    if (options?.since) {
+      logs = logs.filter(log => log.timestamp >= options.since!);
+    }
+
+    // Filter by level if provided
+    if (options?.level && options.level !== 'all') {
+      logs = logs.filter(log => log.level === options.level);
+    }
+
+    // Sort by timestamp (newest first)
+    logs.sort((a, b) => b.timestamp - a.timestamp);
+
+    // Apply limit
+    const limit = options?.limit ?? 50;
+    return logs.slice(0, limit);
+  }
+
   async destroy(): Promise<void> {
     this.files.clear();
     this.ports.clear();
+    this.consoleLogs = [];
     this.ready = false;
+  }
+
+  private addLog(level: LogEntry['level'], message: string, source?: string): void {
+    const logEntry: LogEntry = {
+      timestamp: Date.now(),
+      level,
+      message,
+      source,
+    };
+    this.consoleLogs.push(logEntry);
+    
+    // Limit log storage to prevent memory issues
+    if (this.consoleLogs.length > this.MAX_LOG_ENTRIES) {
+      this.consoleLogs = this.consoleLogs.slice(-this.MAX_LOG_ENTRIES);
+    }
   }
 }

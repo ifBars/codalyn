@@ -34,6 +34,40 @@ export interface AgentTask {
   previousOutputs?: string[];
   /** Existing artifacts from previous agents */
   existingArtifacts?: Artifact[];
+  /** Master plan from orchestrator (Phase 0.2) */
+  masterPlan?: {
+    objective: string;
+    strategy: string;
+    tasks: Array<{
+      id: string;
+      agentRole: string;
+      description: string;
+    }>;
+  };
+  /** Progress callback for real-time updates */
+  onProgress?: (update: AgentProgressUpdate) => void;
+}
+
+export interface AgentProgressUpdate {
+  taskId: string;
+  agentId: string;
+  iteration: number;
+  maxIterations: number;
+  currentToolCall?: {
+    name: string;
+    args: any;
+    startedAt: number;
+  };
+  completedToolCalls?: Array<{
+    name: string;
+    args: any;
+    result?: any;
+    error?: string;
+    duration: number;
+    success: boolean;
+  }>;
+  status: 'thinking' | 'executing_tool' | 'completed' | 'failed';
+  message?: string;
 }
 
 export interface AgentResult {
@@ -85,6 +119,22 @@ export class Agent {
       enhancedPrompt += artifactsSection;
     }
 
+    // Add master plan overview (Phase 0.2)
+    if (task.masterPlan) {
+      const planSection = `\n\n## MASTER PLAN - Your Role in the Overall Strategy
+
+**Project Goal:** ${task.masterPlan.objective}
+**Overall Strategy:** ${task.masterPlan.strategy}
+
+**Complete Task Breakdown:**
+${task.masterPlan.tasks.map((t, i) =>
+  `${i + 1}. [${t.agentRole}] ${t.description}${task.id === t.id ? ' ← YOU ARE HERE' : ''}`
+).join('\n')}
+
+⚠️ **CRITICAL:** Follow this plan. Do NOT deviate or add features not in the plan. Your work must align with the overall strategy and enable the agents that come after you.`;
+      enhancedPrompt += planSection;
+    }
+
     // Build the system prompt
     const systemPrompt = this.config.systemPrompt
       ? this.config.systemPrompt
@@ -104,11 +154,40 @@ export class Agent {
     const maxIterations = this.config.maxIterations || 10;
     let finalResponse: GenerateResponse | null = null;
     let accumulatedOutput = '';
+    const completedToolCalls: Array<{
+      name: string;
+      args: any;
+      result?: any;
+      error?: string;
+      duration: number;
+      success: boolean;
+    }> = [];
+
+    // Emit initial progress update
+    task.onProgress?.({
+      taskId: task.id,
+      agentId: this.id,
+      iteration: 0,
+      maxIterations,
+      status: 'thinking',
+      message: 'Starting execution...',
+    });
 
     // Agentic loop: Think -> Act -> Observe
     while (iteration < maxIterations) {
       iteration++;
       console.log(`[MDAP Agent ${this.id}] Iteration ${iteration}/${maxIterations}`);
+
+      // Emit progress update for new iteration
+      task.onProgress?.({
+        taskId: task.id,
+        agentId: this.id,
+        iteration,
+        maxIterations,
+        completedToolCalls: completedToolCalls.length > 0 ? [...completedToolCalls] : undefined,
+        status: 'thinking',
+        message: `Iteration ${iteration}/${maxIterations}: Thinking...`,
+      });
 
       // Create request with current conversation history
       const request = createRequest({
@@ -158,6 +237,17 @@ export class Agent {
           content: response.outputText,
         });
 
+        // Emit completion progress
+        task.onProgress?.({
+          taskId: task.id,
+          agentId: this.id,
+          iteration,
+          maxIterations,
+          completedToolCalls: completedToolCalls.length > 0 ? [...completedToolCalls] : undefined,
+          status: 'completed',
+          message: 'Execution completed',
+        });
+
         break;
       }
 
@@ -185,12 +275,29 @@ export class Agent {
       for (const toolCall of response.toolCalls) {
         console.log(`[MDAP Agent ${this.id}] Executing tool: ${toolCall.name}`);
 
-        try {
-          // Parse arguments if they're a string
-          const args = typeof toolCall.arguments === 'string'
-            ? JSON.parse(toolCall.arguments)
-            : toolCall.arguments;
+        // Parse arguments if they're a string
+        const args = typeof toolCall.arguments === 'string'
+          ? JSON.parse(toolCall.arguments)
+          : toolCall.arguments;
 
+        // Emit progress update for tool call start
+        const toolCallStartTime = Date.now();
+        task.onProgress?.({
+          taskId: task.id,
+          agentId: this.id,
+          iteration,
+          maxIterations,
+          currentToolCall: {
+            name: toolCall.name,
+            args,
+            startedAt: toolCallStartTime,
+          },
+          completedToolCalls: completedToolCalls.length > 0 ? [...completedToolCalls] : undefined,
+          status: 'executing_tool',
+          message: `Executing ${toolCall.name}...`,
+        });
+
+        try {
           // Execute tool using ToolSet
           const result = await this.tools.execute({
             id: toolCall.id,
@@ -198,28 +305,85 @@ export class Agent {
             args,
           });
 
-          toolResults.push({
+          const toolDuration = Date.now() - toolCallStartTime;
+          const toolCallResult = {
             toolCallId: toolCall.id,
             name: toolCall.name,
             result: result.result,
             error: result.error,
             success: result.success,
+          };
+
+          toolResults.push(toolCallResult);
+
+          // Track completed tool call
+          completedToolCalls.push({
+            name: toolCall.name,
+            args,
+            result: result.result,
+            error: result.error,
+            duration: toolDuration,
+            success: result.success,
           });
+
+          // Limit completed tool calls history to last 20 to avoid memory issues
+          if (completedToolCalls.length > 20) {
+            completedToolCalls.shift();
+          }
 
           console.log(`[MDAP Agent ${this.id}] Tool ${toolCall.name} executed:`, {
             success: result.success,
             error: result.error,
           });
+
+          // Emit progress update for tool call completion
+          task.onProgress?.({
+            taskId: task.id,
+            agentId: this.id,
+            iteration,
+            maxIterations,
+            completedToolCalls: [...completedToolCalls],
+            status: 'executing_tool',
+            message: `${toolCall.name} completed`,
+          });
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
+          const toolDuration = Date.now() - toolCallStartTime;
           console.error(`[MDAP Agent ${this.id}] Tool ${toolCall.name} failed:`, errorMessage);
 
-          toolResults.push({
+          const toolCallResult = {
             toolCallId: toolCall.id,
             name: toolCall.name,
             result: null,
             error: errorMessage,
             success: false,
+          };
+
+          toolResults.push(toolCallResult);
+
+          // Track failed tool call
+          completedToolCalls.push({
+            name: toolCall.name,
+            args,
+            error: errorMessage,
+            duration: toolDuration,
+            success: false,
+          });
+
+          // Limit completed tool calls history
+          if (completedToolCalls.length > 20) {
+            completedToolCalls.shift();
+          }
+
+          // Emit progress update for failed tool call
+          task.onProgress?.({
+            taskId: task.id,
+            agentId: this.id,
+            iteration,
+            maxIterations,
+            completedToolCalls: [...completedToolCalls],
+            status: 'executing_tool',
+            message: `${toolCall.name} failed: ${errorMessage}`,
           });
         }
       }
@@ -249,11 +413,32 @@ export class Agent {
 
       console.log(`[MDAP Agent ${this.id}] Tool results added to conversation history`);
 
+      // Emit progress update after tool execution completes
+      task.onProgress?.({
+        taskId: task.id,
+        agentId: this.id,
+        iteration,
+        maxIterations,
+        completedToolCalls: [...completedToolCalls],
+        status: 'thinking',
+        message: `Iteration ${iteration}/${maxIterations} completed, continuing...`,
+      });
+
       // Continue to next iteration
     }
 
     if (iteration >= maxIterations) {
       console.warn(`[MDAP Agent ${this.id}] Max iterations (${maxIterations}) reached`);
+      // Emit final progress update
+      task.onProgress?.({
+        taskId: task.id,
+        agentId: this.id,
+        iteration,
+        maxIterations,
+        completedToolCalls: completedToolCalls.length > 0 ? [...completedToolCalls] : undefined,
+        status: 'completed',
+        message: 'Max iterations reached',
+      });
     }
 
     console.log(`[MDAP Agent ${this.id}] Execution complete after ${iteration} iteration(s)`);

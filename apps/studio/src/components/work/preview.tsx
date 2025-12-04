@@ -11,9 +11,10 @@ import { registerIframe } from "@/lib/screenshot";
 interface PreviewProps {
   projectId: string;
   onRequestFix?: (errors: string) => void;
+  onLoadingChange?: (isLoading: boolean) => void;
 }
 
-export default function Preview({ projectId, onRequestFix }: PreviewProps) {
+export default function Preview({ projectId, onRequestFix, onLoadingChange }: PreviewProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
@@ -23,6 +24,11 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const errorCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const hasErrorsRef = useRef(false);
+
+  // Notify parent of loading state changes
+  useEffect(() => {
+    onLoadingChange?.(isLoading);
+  }, [isLoading, onLoadingChange]);
 
   // Register iframe ref globally for screenshot capture
   useEffect(() => {
@@ -1082,13 +1088,16 @@ export default function Preview({ projectId, onRequestFix }: PreviewProps) {
             viewMode === "tablet" ? "w-[768px] border-x border-white/10" :
               "w-full"
         )}>
-          {isLoading ? (
+          {isLoading && !onLoadingChange ? (
             <div className="flex h-full items-center justify-center bg-gradient-to-br from-primary/5 via-background to-background">
               <div className="text-center space-y-3">
                 <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
                 <p className="text-sm text-muted-foreground">Starting preview...</p>
               </div>
             </div>
+          ) : isLoading && onLoadingChange ? (
+            // Parent is handling loading screen, show empty placeholder
+            <div className="h-full w-full" />
           ) : previewUrl ? (
             <iframe
               ref={frameRef}

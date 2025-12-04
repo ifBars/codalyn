@@ -17,11 +17,13 @@ export class CodalynToolSet implements ToolSet {
         // Filter out tools that are handled by other tool sets:
         // - search_project: handled by VectorStoreToolSet
         // - context7_get_docs, context7_resolve_library: handled by Context7ToolSet
+        // - capture_screenshot: handled by BrowserToolSet (client-side only)
         return toolRegistry
             .filter((tool) =>
                 tool.name !== "search_project" &&
                 tool.name !== "context7_get_docs" &&
                 tool.name !== "context7_resolve_library" &&
+                tool.name !== "capture_screenshot" &&
                 getExecutor(tool.name) !== undefined
             )
             .map((tool) => ({
@@ -97,7 +99,8 @@ export class CodalynToolSet implements ToolSet {
         // Exclude tools handled by other tool sets:
         // - search_project: handled by VectorStoreToolSet
         // - context7_get_docs, context7_resolve_library: handled by Context7ToolSet
-        if (name === "search_project" || name === "context7_get_docs" || name === "context7_resolve_library") {
+        // - capture_screenshot: handled by BrowserToolSet (client-side only)
+        if (name === "search_project" || name === "context7_get_docs" || name === "context7_resolve_library" || name === "capture_screenshot") {
             return false;
         }
         return getExecutor(name) !== undefined;

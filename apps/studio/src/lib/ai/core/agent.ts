@@ -3,14 +3,17 @@
  */
 
 import { AgentConfig, AgentEvent, AgentResult, Message, ToolCall } from "./types";
+import { checkForErrors, formatErrorsForAI } from "./error-detection";
 
 export class Agent {
     private config: AgentConfig;
     private maxIterations: number;
+    private maxErrorFixIterations: number;
 
     constructor(config: AgentConfig) {
         this.config = config;
         this.maxIterations = config.maxIterations || 10;
+        this.maxErrorFixIterations = config.maxErrorFixIterations || 5;
     }
 
     /**
@@ -24,6 +27,8 @@ export class Agent {
         const allToolResults: any[] = [];
         let finalResponse = "";
         let iteration = 0;
+        let errorFixIterations = 0;
+        let isErrorFixingPhase = false;
 
         // Add user message to memory
         this.config.memory.addMessage({
@@ -61,15 +66,44 @@ export class Agent {
                 finalResponse = response.content;
             }
 
-            // If no tool calls, we're done
+            // If no tool calls, check for errors before finishing
             if (!response.toolCalls || response.toolCalls.length === 0) {
-                console.log("[AI Debug] No tool calls - completing execution");
+                console.log("[AI Debug] No tool calls - checking for errors");
                 // Add assistant response to memory
                 this.config.memory.addMessage({
                     role: "assistant",
                     content: response.content,
                 });
-                break;
+
+                // Check for errors (only if not already in error-fixing phase)
+                if (!isErrorFixingPhase && errorFixIterations < this.maxErrorFixIterations) {
+                    console.log("[AI Debug] Running error check...");
+                    const errorReport = await checkForErrors(this.config.tools);
+                    
+                    if (errorReport.hasErrors) {
+                        console.log(`[AI Debug] Errors found: ${errorReport.summary}`);
+                        const errorMessage = formatErrorsForAI(errorReport);
+                        
+                        // Add error message as a new user message to trigger fixes
+                        this.config.memory.addMessage({
+                            role: "user",
+                            content: errorMessage,
+                        });
+                        
+                        errorFixIterations++;
+                        isErrorFixingPhase = true;
+                        console.log(`[AI Debug] Starting error-fix iteration ${errorFixIterations}/${this.maxErrorFixIterations}`);
+                        // Continue the loop to fix errors
+                        continue;
+                    } else {
+                        console.log("[AI Debug] No errors found - completing execution");
+                        break;
+                    }
+                } else {
+                    // Already checked errors or max error-fix iterations reached
+                    console.log("[AI Debug] Completing execution (error checking done or max reached)");
+                    break;
+                }
             }
 
             // Execute tool calls
@@ -120,6 +154,12 @@ export class Agent {
                 role: "tool",
                 toolResults,
             });
+            
+            // If we were fixing errors and just executed tool calls, reset the flag
+            if (isErrorFixingPhase) {
+                isErrorFixingPhase = false;
+            }
+            
             console.log(`[AI Debug] Iteration ${iteration} complete, continuing...`);
         }
 
@@ -151,6 +191,8 @@ export class Agent {
         const allToolCalls: ToolCall[] = [];
         const allToolResults: any[] = [];
         let iteration = 0;
+        let errorFixIterations = 0;
+        let isErrorFixingPhase = false;
 
         // Add user message to memory
         this.config.memory.addMessage({
@@ -217,16 +259,51 @@ export class Agent {
             console.log(`[AI Debug] Response text length: ${currentResponseText.length} chars`);
             console.log(`[AI Debug] Tool calls received: ${currentToolCalls.length} (after deduplication)`);
 
-            // If no tool calls, we're done
+            // If no tool calls, check for errors before finishing
             if (currentToolCalls.length === 0) {
-                console.log("[AI Debug] No tool calls - completing execution");
+                console.log("[AI Debug] No tool calls - checking for errors");
                 // Add assistant response to memory
                 this.config.memory.addMessage({
                     role: "assistant",
                     content: currentResponseText,
                 });
                 yield { type: "response", content: currentResponseText };
-                break;
+
+                // Check for errors (only if not already in error-fixing phase)
+                if (!isErrorFixingPhase && errorFixIterations < this.maxErrorFixIterations) {
+                    console.log("[AI Debug] Running error check...");
+                    yield { type: "error_check", checking: true };
+                    
+                    const errorReport = await checkForErrors(this.config.tools);
+                    
+                    if (errorReport.hasErrors) {
+                        console.log(`[AI Debug] Errors found: ${errorReport.summary}`);
+                        yield { type: "errors_found", errors: errorReport };
+                        
+                        const errorMessage = formatErrorsForAI(errorReport);
+                        
+                        // Add error message as a new user message to trigger fixes
+                        this.config.memory.addMessage({
+                            role: "user",
+                            content: errorMessage,
+                        });
+                        
+                        errorFixIterations++;
+                        isErrorFixingPhase = true;
+                        console.log(`[AI Debug] Starting error-fix iteration ${errorFixIterations}/${this.maxErrorFixIterations}`);
+                        // Continue the loop to fix errors
+                        continue;
+                    } else {
+                        console.log("[AI Debug] No errors found - completing execution");
+                        yield { type: "error_check", checking: false };
+                        break;
+                    }
+                } else {
+                    // Already checked errors or max error-fix iterations reached
+                    console.log("[AI Debug] Completing execution (error checking done or max reached)");
+                    yield { type: "error_check", checking: false };
+                    break;
+                }
             }
 
             // Execute tool calls
@@ -291,6 +368,12 @@ export class Agent {
                 role: "tool",
                 toolResults,
             });
+            
+            // If we were fixing errors and just executed tool calls, reset the flag
+            if (isErrorFixingPhase) {
+                isErrorFixingPhase = false;
+            }
+            
             console.log(`[AI Debug] Iteration ${iteration} complete, continuing...`);
 
             // Continue loop

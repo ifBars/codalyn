@@ -55,6 +55,7 @@ import {
 import { WebContainerManager } from "@/lib/webcontainer-manager";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { VectorStore } from "@/lib/vector-store";
+import { MixedbreadVectorStore } from "@/lib/mixedbread-vector-store";
 
 const formatTimestamp = (value?: string) => {
   if (!value) return "not yet";
@@ -98,9 +99,11 @@ export default function BuilderPage() {
   const [plans, setPlans] = useState<Artifact[]>([]);
   const [currentPlan, setCurrentPlan] = useState<Artifact | null>(null);
   const [showPlans, setShowPlans] = useState(false);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(true);
 
   const agentRef = useRef<Agent | null>(null);
   const vectorStoreRef = useRef<VectorStore | null>(null);
+  const mixedbreadStoreRef = useRef<MixedbreadVectorStore | null>(null);
   const chatInterfaceRef = useRef<ChatInterfaceRef>(null);
 
   const projectIdFromQuery = searchParams.get("projectId");
@@ -210,9 +213,14 @@ export default function BuilderPage() {
   useEffect(() => {
     if (!activeProject || isInitializing) return;
 
-    // Set project files in vector store for lazy indexing
+    // Set project files in Gemini vector store for lazy indexing
     if (vectorStoreRef.current && typeof vectorStoreRef.current.setProjectFiles === 'function') {
       vectorStoreRef.current.setProjectFiles(activeProject.files);
+    }
+
+    // Set project files in Mixedbread store for lazy indexing
+    if (mixedbreadStoreRef.current && typeof mixedbreadStoreRef.current.setProjectFiles === 'function') {
+      mixedbreadStoreRef.current.setProjectFiles(activeProject.files);
     }
   }, [activeProject, isInitializing]);
 
@@ -241,6 +249,7 @@ export default function BuilderPage() {
     apiKeys: {
       googleApiKey?: string;
       context7ApiKey?: string;
+      mixedbreadApiKey?: string;
     },
     model: AccuralAIModelId
   ) => {
@@ -251,6 +260,26 @@ export default function BuilderPage() {
       vectorStoreRef.current = new VectorStore(vectorStoreKey);
     }
 
+    // Initialize Mixedbread store if API key is available
+    const mixedbreadApiKey = apiKeys.mixedbreadApiKey || 
+      (typeof window !== 'undefined' ? process.env.NEXT_PUBLIC_MXBAI_API_KEY : undefined);
+    
+    if (mixedbreadApiKey && !mixedbreadStoreRef.current) {
+      try {
+        const storeName = typeof window !== 'undefined' 
+          ? process.env.NEXT_PUBLIC_MXBAI_STORE 
+          : undefined;
+        // Use activeProject.id if available, otherwise will use default store name
+        mixedbreadStoreRef.current = new MixedbreadVectorStore(
+          mixedbreadApiKey,
+          storeName,
+          activeProject?.id
+        );
+      } catch (error) {
+        console.warn("Failed to initialize Mixedbread store:", error);
+      }
+    }
+
     // Create sandbox
     const sandbox = new WebContainerSandbox();
 
@@ -259,6 +288,8 @@ export default function BuilderPage() {
     const browserTools = new BrowserToolSet(); // Uses getGlobalIframe() internally
     const vectorStoreTools = new VectorStoreToolSet({
       vectorStore: vectorStoreRef.current,
+      mixedbreadStore: mixedbreadStoreRef.current,
+      searchBackend: 'auto', // Use Mixedbread if available, otherwise Gemini
     });
 
     // Add Context7 tools if API key is available
@@ -297,9 +328,19 @@ export default function BuilderPage() {
 
   // Sync project files to vector store when both are ready
   useEffect(() => {
-    if (vectorStoreRef.current && activeProject && isAccuralAIReady) {
+    if (activeProject && isAccuralAIReady) {
       try {
-        vectorStoreRef.current.setProjectFiles(activeProject.files);
+        // Sync to Gemini vector store
+        if (vectorStoreRef.current) {
+          vectorStoreRef.current.setProjectFiles(activeProject.files);
+        }
+
+        // Sync to Mixedbread store
+        if (mixedbreadStoreRef.current) {
+          mixedbreadStoreRef.current.setProjectFiles(activeProject.files);
+          // Optionally trigger lazy indexing (will happen on first search)
+        }
+
         // Update vector store tool set if agent exists
         if (agentRef.current) {
           const agent = agentRef.current as any;
@@ -308,6 +349,7 @@ export default function BuilderPage() {
             for (const toolSet of compositeTools.toolSets) {
               if (toolSet instanceof VectorStoreToolSet) {
                 toolSet.setVectorStore(vectorStoreRef.current);
+                toolSet.setMixedbreadStore(mixedbreadStoreRef.current);
               }
             }
           }
@@ -787,10 +829,14 @@ export default function BuilderPage() {
             />
           </div>
         ) : (
-          <div className="hidden flex-1 flex-col bg-background lg:flex">
+          <div className="hidden flex-1 flex-col bg-background lg:flex relative">
+            {isPreviewLoading && (
+              <LoadingScreen message="Starting preview..." />
+            )}
             <Preview
               projectId={activeProject?.id || ""}
               onRequestFix={handleRequestFix}
+              onLoadingChange={setIsPreviewLoading}
             />
           </div>
         )}

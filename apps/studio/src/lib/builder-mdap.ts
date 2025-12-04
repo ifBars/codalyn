@@ -4,14 +4,18 @@
  */
 
 import { createBuilderMdapOrchestrator } from "./ai/mdap";
+import { AccuralAIAdapter } from "./ai/providers/accuralai";
 import type { Artifact, OrchestratorResult } from "@codalyn/accuralai";
 import type { AccuralAIModelId } from "./ai/core/types";
 import type { MdapProgressUpdate } from "@/components/builder/mdap-progress";
+import type { Message } from "./ai/core/types";
 
 export interface BuilderMdapConfig {
   googleApiKey: string;
   modelName?: AccuralAIModelId;
   onProgress?: (update: MdapProgressUpdate) => void;
+  /** Existing plan artifacts that may be referenced in the prompt */
+  existingPlans?: Artifact[];
 }
 
 /**
@@ -130,6 +134,24 @@ export async function executeMdapInBrowser(
             }
           }
 
+          // Extract detailed execution information
+          const currentIteration = exec.currentIteration;
+          const maxIterations = exec.maxIterations;
+          const taskDesc = exec.taskDescription;
+          const currentToolCall = exec.currentToolCall ? {
+            name: exec.currentToolCall.name,
+            args: exec.currentToolCall.args,
+          } : undefined;
+          const completedToolCalls = exec.completedToolCalls?.map(tc => ({
+            name: tc.name,
+            duration: tc.duration,
+            success: tc.success,
+            error: tc.error,
+          }));
+          
+          // Count artifacts created (from result if available)
+          const artifactsCreated = exec.result?.artifacts?.length || 0;
+
           const activity = {
             agentId: exec.agentId,
             agentName: agentNameMap[exec.agentId] || exec.agentId,
@@ -139,11 +161,21 @@ export async function executeMdapInBrowser(
                     "idle" as const,
             task: taskDescription,
             startedAt: exec.startTime,
+            taskDescription: taskDesc,
+            currentIteration,
+            maxIterations,
+            currentToolCall,
+            completedToolCalls,
+            artifactsCreated,
           };
 
           // Keep the most recent status (running > completed > idle)
+          // When status is the same, prefer the one with more detailed information
           const existing = agentActivityMap.get(exec.agentId);
-          if (!existing || activity.status === "working" || (existing.status !== "working" && activity.startedAt > existing.startedAt)) {
+          if (!existing || 
+              activity.status === "working" || 
+              (existing.status !== "working" && activity.startedAt > existing.startedAt) ||
+              (existing.status === activity.status && activity.currentIteration !== undefined && (existing.currentIteration === undefined || activity.currentIteration > existing.currentIteration))) {
             agentActivityMap.set(exec.agentId, activity);
           }
         });
@@ -186,6 +218,7 @@ export async function executeMdapInBrowser(
     const result = await orchestrator.execute({
       prompt,
       workflow: "sequential",
+      existingPlans: config.existingPlans,
     });
 
     const duration = Date.now() - startTime;
@@ -200,24 +233,59 @@ export async function executeMdapInBrowser(
 
     // Report final completion with all agents shown as completed
     const finalStats = orchestrator.getStats();
-    const finalAgentActivity = finalStats.executions.map(exec => {
-      const agentNameMap: Record<string, string> = {
-        "code-generator": "Code Generator",
-        "tester": "Test Engineer",
-        "code-reviewer": "Code Reviewer",
-        "ui-designer": "UI Designer",
-        "debugger": "Debugger",
-        "architect": "Software Architect",
-        "qa-agent": "Quality Assurance",
-        "finalizer": "Finalizer",
-        "planner": "Planning Agent",
-      };
+    const agentNameMap: Record<string, string> = {
+      "code-generator": "Code Generator",
+      "tester": "Test Engineer",
+      "code-reviewer": "Code Reviewer",
+      "ui-designer": "UI Designer",
+      "debugger": "Debugger",
+      "architect": "Software Architect",
+      "qa-agent": "Quality Assurance",
+      "finalizer": "Finalizer",
+      "planner": "Planning Agent",
+    };
 
+    // Deduplicate by agentId - group executions by agent and count tasks
+    const agentExecutionMap = new Map<string, { count: number; startedAt: number }>();
+    finalStats.executions.forEach(exec => {
+      const existing = agentExecutionMap.get(exec.agentId);
+      if (existing) {
+        existing.count++;
+        // Keep the earliest start time
+        if (exec.startTime < existing.startedAt) {
+          existing.startedAt = exec.startTime;
+        }
+      } else {
+        agentExecutionMap.set(exec.agentId, {
+          count: 1,
+          startedAt: exec.startTime,
+        });
+      }
+    });
+
+    // Create unique agent activity entries with detailed information
+    const finalAgentActivity = Array.from(agentExecutionMap.entries()).map(([agentId, data]) => {
+      // Find the most recent execution for this agent to get detailed info
+      const latestExecution = finalStats.executions
+        .filter(e => e.agentId === agentId)
+        .sort((a, b) => (b.startTime || 0) - (a.startTime || 0))[0];
+      
       return {
-        agentId: exec.agentId,
-        agentName: agentNameMap[exec.agentId] || exec.agentId,
+        agentId,
+        agentName: agentNameMap[agentId] || agentId,
         status: "completed" as const,
-        startedAt: exec.startTime,
+        task: data.count > 1 ? `${data.count} tasks completed` : "Task completed",
+        startedAt: data.startedAt,
+        taskDescription: latestExecution?.taskDescription,
+        currentIteration: latestExecution?.currentIteration,
+        maxIterations: latestExecution?.maxIterations,
+        completedToolCalls: latestExecution?.completedToolCalls?.map(tc => ({
+          name: tc.name,
+          duration: tc.duration,
+          success: tc.success,
+          error: tc.error,
+        })),
+        artifactsCreated: latestExecution?.result?.artifacts?.length || 0,
       };
     });
 
@@ -317,6 +385,61 @@ export function getArtifactsFromLocalStorage(projectId: string): Artifact[] {
 export function getPlansFromLocalStorage(projectId: string): Artifact[] {
   const artifacts = getArtifactsFromLocalStorage(projectId);
   return artifacts.filter((a) => a.type === "plan");
+}
+
+/**
+ * Generate a concise summary of MDAP execution results using gemini-2.5-flash-lite
+ */
+export async function generateMdapSummary(
+  result: OrchestratorResult,
+  googleApiKey: string
+): Promise<string> {
+  try {
+    const adapter = new AccuralAIAdapter({
+      googleApiKey,
+      modelName: "google:gemini-2.5-flash-lite",
+    });
+
+    // Build summary prompt
+    const artifactSummary = result.artifacts
+      .map((a) => `- ${a.filename} (${a.type})`)
+      .join("\n");
+
+    const planInfo = result.planArtifact
+      ? `\nPlan: ${result.planArtifact.filename}`
+      : "";
+
+    const summaryPrompt = `You are summarizing the results of a multi-agent development workflow (MDAP). 
+
+The following work was completed:
+- ${result.results.length} agent task(s) executed
+- ${result.artifacts.length} artifact(s) generated${planInfo}
+- Execution time: ${Math.floor(result.executionTimeMs / 1000)}s
+
+Artifacts created:
+${artifactSummary}
+
+Generate a concise 1-2 paragraph summary describing what was accomplished. Focus on:
+1. What was built or modified
+2. Key files/components created
+3. Overall outcome
+
+Keep it brief, professional, and informative. Do not include technical implementation details unless critical.`;
+
+    const messages: Message[] = [
+      {
+        role: "user",
+        content: summaryPrompt,
+      },
+    ];
+
+    const response = await adapter.generate(messages, []);
+    return response.content || "MDAP execution completed successfully.";
+  } catch (error) {
+    console.error("[Builder MDAP] Failed to generate summary:", error);
+    // Fallback to simple summary
+    return `MDAP execution completed. Generated ${result.artifacts.length} artifact(s) in ${Math.floor(result.executionTimeMs / 1000)}s.`;
+  }
 }
 
 /**

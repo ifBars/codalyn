@@ -141,11 +141,30 @@ export class VercelAIBackend implements Backend {
         : undefined;
 
       const finishReason = this.mapFinishReason(result.finishReason);
+      const outputText = result.text || '';
+      const hasToolCalls = toolCalls && toolCalls.length > 0;
+      
+      // Validation requires: outputText cannot be empty unless finishReason is 'error' or toolCalls are present
+      // If we have tool calls, empty outputText is valid
+      // If we don't have tool calls and outputText is empty, we must set finishReason to 'error'
+      let finalOutputText = outputText;
+      let finalFinishReason: 'stop' | 'length' | 'content_filter' | 'error' | 'tool_calls';
+      
+      if (hasToolCalls) {
+        finalFinishReason = 'tool_calls';
+        // Empty outputText is valid when we have tool calls
+      } else if (outputText.length === 0) {
+        // Empty outputText without tool calls requires error finishReason
+        finalFinishReason = 'error';
+        finalOutputText = 'Model returned empty response';
+      } else {
+        finalFinishReason = finishReason;
+      }
 
       return createResponse({
         requestId: request.id,
-        outputText: result.text || '',
-        finishReason: toolCalls && toolCalls.length > 0 ? 'tool_calls' : finishReason,
+        outputText: finalOutputText,
+        finishReason: finalFinishReason,
         usage: {
           promptTokens: (usage as any).promptTokens || 0,
           completionTokens: (usage as any).completionTokens || 0,

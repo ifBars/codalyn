@@ -1,4 +1,0 @@
-/**
- * Sandbox interface types
- */
-export {};

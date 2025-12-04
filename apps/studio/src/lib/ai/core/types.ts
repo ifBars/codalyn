@@ -2,6 +2,8 @@
  * Core type definitions for the agentic AI system
  */
 
+import type { ErrorReport } from "./error-detection";
+
 /**
  * A message in the conversation
  */
@@ -41,6 +43,7 @@ export interface AgentConfig {
     tools: ToolSet;
     memory: Memory;
     maxIterations?: number;
+    maxErrorFixIterations?: number;
     maxTokens?: number;
     systemPrompt?: string;
 }
@@ -161,6 +164,8 @@ export type AgentEvent =
     | { type: "response"; content: string }
     | { type: "error"; error: string }
     | { type: "iteration"; iteration: number; maxIterations: number }
+    | { type: "error_check"; checking: boolean }
+    | { type: "errors_found"; errors: ErrorReport }
     | { type: "done" };
 
 /**

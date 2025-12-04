@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import ReactMarkdown from "react-markdown";
+import { Streamdown } from "streamdown";
 import type { Components } from "react-markdown";
 import { FileText, Package, Trash2 } from "lucide-react";
 import type { FileOperation } from "@/lib/ai";
@@ -10,6 +10,7 @@ interface MarkdownContentProps {
   content: string;
   className?: string;
   operations?: FileOperation[];
+  isAnimating?: boolean;
 }
 
 /**
@@ -45,7 +46,7 @@ function ActionCard({
  * Renders markdown content with proper styling for AI responses
  * Injects inline action cards for file operations
  */
-export function MarkdownContent({ content, className = "", operations = [] }: MarkdownContentProps) {
+export function MarkdownContent({ content, className = "", operations = [], isAnimating = false }: MarkdownContentProps) {
   // Deduplicate operations by path/type to prevent duplicate cards
   const uniqueOperations = React.useMemo(() => {
     const seen = new Set<string>();
@@ -247,7 +248,16 @@ export function MarkdownContent({ content, className = "", operations = [] }: Ma
           {toolActionCards}
         </div>
       )}
-      <ReactMarkdown key={contentKey} components={components}>{content}</ReactMarkdown>
+      <Streamdown
+        key={contentKey}
+        components={components}
+        isAnimating={isAnimating}
+        parseIncompleteMarkdown={true}
+        controls={{ code: true, table: true }}
+        shikiTheme={['github-light', 'github-dark']}
+      >
+        {content}
+      </Streamdown>
     </div>
   );
 }

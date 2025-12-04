@@ -1,5 +1,5 @@
 import { PageSpec } from "@codalyn/dsl";
-import { kebabCase, pascalCase } from "@codalyn/shared";
+import { pascalCase } from "@codalyn/shared";
 
 export function generateNextPage(spec: PageSpec, components: string[]): string {
   const pageName = pascalCase(spec.name);

@@ -96,7 +96,7 @@ const agent = createAgent({
   apiKey: process.env.GEMINI_API_KEY!,
   sandbox,
   systemPrompt: "You are a helpful AI assistant...",
-  maxIterations: 10,
+  maxIterations: 25,
 });
 
 // Run synchronously
