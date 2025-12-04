@@ -2,7 +2,7 @@
 
 Build beautiful React apps with AI. Just describe what you want, and watch it come to life in real-time.
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![License](https://img.shields.io/badge/license-GPLv3-green.svg)
 ![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg?logo=typescript)
 ![Next.js](https://img.shields.io/badge/Next.js-15-black.svg?logo=next.js)
