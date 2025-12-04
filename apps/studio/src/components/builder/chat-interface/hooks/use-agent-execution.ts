@@ -98,6 +98,8 @@ export function useAgentExecution({
                                 content: fullResponse,
                                 screenshot: capturedScreenshot || phaseMsg.screenshot,
                                 operations: currentOps.length > 0 ? currentOps : undefined,
+                                toolCalls: toolCalls.length > 0 ? [...toolCalls] : undefined,
+                                toolResults: toolResults.length > 0 ? [...toolResults] : undefined,
                             };
                         }
                         return next;
@@ -116,6 +118,8 @@ export function useAgentExecution({
                                 content: newContent,
                                 screenshot: capturedScreenshot || phaseMsg.screenshot,
                                 operations: phaseMsg.operations,
+                                toolCalls: phaseMsg.toolCalls,
+                                toolResults: phaseMsg.toolResults,
                             };
                         }
                         return next;
@@ -137,6 +141,8 @@ export function useAgentExecution({
                                 next[currentPhaseMessageIndex] = {
                                     ...phaseMsg,
                                     operations: validatedPreviousPhaseOps.length > 0 ? validatedPreviousPhaseOps : undefined,
+                                    toolCalls: toolCalls.length > 0 ? [...toolCalls] : undefined,
+                                    toolResults: toolResults.length > 0 ? [...toolResults] : undefined,
                                 };
                             }
                             next.push({ role: "assistant", content: "" });
@@ -180,6 +186,8 @@ export function useAgentExecution({
                                         ...phaseMsg,
                                         screenshot,
                                         operations: phaseMsg.operations,
+                                        toolCalls: phaseMsg.toolCalls,
+                                        toolResults: phaseMsg.toolResults,
                                     };
                                 }
                                 return next;
@@ -200,6 +208,8 @@ export function useAgentExecution({
                                     content: fullResponse,
                                     screenshot: capturedScreenshot || phaseMsg.screenshot,
                                     operations: phaseMsg.operations,
+                                    toolCalls: phaseMsg.toolCalls,
+                                    toolResults: phaseMsg.toolResults,
                                 };
                             }
                             return next;
@@ -229,6 +239,8 @@ export function useAgentExecution({
                             next[currentPhaseMessageIndex] = {
                                 ...phaseMsg,
                                 operations: validatedCurrentPhaseOps.length > 0 ? validatedCurrentPhaseOps : undefined,
+                                toolCalls: toolCalls.length > 0 ? [...toolCalls] : undefined,
+                                toolResults: toolResults.length > 0 ? [...toolResults] : undefined,
                             };
                         }
                         return next;

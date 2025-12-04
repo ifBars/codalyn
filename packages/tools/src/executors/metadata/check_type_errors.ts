@@ -179,17 +179,122 @@ export const checkTypeErrorsExecutor: ToolExecutor = {
         }
       }
 
+      // Also check console logs for build errors (Vite, etc.)
+      const buildErrors: Array<{
+        file: string;
+        line: number;
+        column: number;
+        message: string;
+        code: string;
+      }> = [];
+
+      try {
+        const consoleLogs = await sandbox.getConsoleLogs({
+          level: 'error',
+          limit: 100,
+          since: Date.now() - 60000, // Check logs from last minute
+        });
+
+        for (const log of consoleLogs) {
+          if (buildErrors.length >= MAX_ERRORS) break;
+          
+          const message = log.message || '';
+          
+          // Skip if already processed (avoid duplicates)
+          const alreadyProcessed = buildErrors.some(e => 
+            e.message.includes(message.substring(0, 50)) || 
+            message.includes(e.message.substring(0, 50))
+          );
+          if (alreadyProcessed) continue;
+          
+          // Parse Vite import errors first (most specific)
+          // Format: "Failed to resolve import "./Header" from "src/App.tsx". Does the file exist?"
+          // Also handles: "[vite] Internal server error: Failed to resolve import..."
+          const viteImportError = message.match(/Failed to resolve import\s+["'](.+?)["']\s+from\s+["'](.+?)["']/i);
+          if (viteImportError) {
+            const [, importPath, file] = viteImportError;
+            // Try to extract line number if present in the message
+            const lineMatch = message.match(/File:\s*.+?:(\d+):(\d+)/i);
+            buildErrors.push({
+              file: file.trim(),
+              line: lineMatch ? parseInt(lineMatch[1], 10) : 0,
+              column: lineMatch ? parseInt(lineMatch[2], 10) : 0,
+              message: `Failed to resolve import "${importPath}"${message.includes('Does the file exist') ? '. Does the file exist?' : ''}`,
+              code: 'VITE_IMPORT_ERROR',
+            });
+            continue;
+          }
+
+          // Parse Vite internal server errors (less specific, but still structured)
+          // Format: "[vite] Internal server error: ..."
+          const viteServerError = message.match(/\[vite\]\s*Internal\s+server\s+error[:\s]+(.+)/i);
+          if (viteServerError) {
+            const errorMsg = viteServerError[1].trim();
+            // Try to extract file path from error message
+            const fileMatch = errorMsg.match(/from\s+["'](.+?)["']/i) || errorMsg.match(/File:\s*(.+?)(?:\s|$)/i);
+            const lineMatch = errorMsg.match(/File:\s*.+?:(\d+):(\d+)/i);
+            buildErrors.push({
+              file: fileMatch ? fileMatch[1].trim() : 'unknown',
+              line: lineMatch ? parseInt(lineMatch[1], 10) : 0,
+              column: lineMatch ? parseInt(lineMatch[2], 10) : 0,
+              message: errorMsg.substring(0, 500),
+              code: 'VITE_SERVER_ERROR',
+            });
+            continue;
+          }
+
+          // Parse generic error patterns with file paths
+          // Format: "File: /path/to/file.tsx:2:19"
+          const fileErrorMatch = message.match(/File:\s*(.+?):(\d+):(\d+)/i);
+          if (fileErrorMatch && message.toLowerCase().includes('error')) {
+            const [, file, lineNum, colNum] = fileErrorMatch;
+            buildErrors.push({
+              file: file.trim(),
+              line: parseInt(lineNum, 10),
+              column: parseInt(colNum, 10),
+              message: message.substring(0, 500),
+              code: 'BUILD_ERROR',
+            });
+            continue;
+          }
+
+          // If it's an error log but doesn't match specific patterns, still include it
+          if (message.toLowerCase().includes('error') && 
+              !message.toLowerCase().includes('typescript') &&
+              !message.toLowerCase().includes('tsc')) {
+            // Try to extract file path
+            const anyFileMatch = message.match(/["'](.+?\.(tsx?|jsx?))["']/i);
+            buildErrors.push({
+              file: anyFileMatch ? anyFileMatch[1] : 'unknown',
+              line: 0,
+              column: 0,
+              message: message.substring(0, 500),
+              code: 'BUILD_ERROR',
+            });
+          }
+        }
+      } catch (logError) {
+        // If we can't get console logs, continue with TypeScript errors only
+        console.warn('[checkTypeErrors] Failed to get console logs:', logError);
+      }
+
+      // Combine TypeScript errors and build errors
+      const allErrors = [...errors, ...buildErrors];
+      const hasAnyErrors = allErrors.length > 0;
+
       return {
         success: true,
         output: {
-          errors,
+          errors: allErrors,
           warnings,
-          hasErrors: errors.length > 0,
+          hasErrors: hasAnyErrors,
           hasWarnings: warnings.length > 0,
-          totalErrors: errors.length,
+          totalErrors: allErrors.length,
           totalWarnings: warnings.length,
-          truncated: errors.length >= MAX_ERRORS || (includeWarnings && warnings.length >= MAX_WARNINGS),
+          truncated: allErrors.length >= MAX_ERRORS || (includeWarnings && warnings.length >= MAX_WARNINGS),
           rawOutput: output.substring(0, 5000), // Limit raw output size
+          buildErrors: buildErrors.length > 0 ? buildErrors : undefined,
+          typeErrors: errors.length > 0 ? errors : undefined,
         },
       };
     } catch (error) {

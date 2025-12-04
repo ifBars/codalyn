@@ -32,7 +32,12 @@ export function ChatMessages({
             )}
 
             {messages.map((msg, idx) => {
-                if (msg.role === "assistant" && !msg.content.trim() && (!msg.operations || msg.operations.length === 0) && !msg.screenshot) {
+                const hasContent = msg.content.trim().length > 0;
+                const hasOperations = msg.operations && msg.operations.length > 0;
+                const hasToolCalls = msg.toolCalls && msg.toolCalls.length > 0;
+                const hasScreenshot = !!msg.screenshot;
+                
+                if (msg.role === "assistant" && !hasContent && !hasOperations && !hasToolCalls && !hasScreenshot) {
                     return null;
                 }
                 return (
@@ -53,6 +58,8 @@ export function ChatMessages({
                             <AssistantMessageContent
                                 content={msg.content}
                                 operations={msg.operations}
+                                toolCalls={msg.toolCalls}
+                                toolResults={msg.toolResults}
                                 isAnimating={(isLoading || isMdapExecuting) && idx === messages.length - 1}
                             />
                         ) : (

@@ -511,10 +511,13 @@ export class WebContainerSandbox implements SandboxInterface {
           // Store log entry
           const logSource = 'dev-server';
 
+          // Strip ANSI codes for pattern matching
+          const cleanText = this.stripAnsiCodes(text);
+
           // Check for server ready messages (Vite format)
-          const viteUrlMatch = text.match(/Local:\s*(https?:\/\/[^\s]+)/i) ||
-            text.match(/➜\s*Local:\s*(https?:\/\/[^\s]+)/i) ||
-            text.match(/ready in \d+ms/i);
+          const viteUrlMatch = cleanText.match(/Local:\s*(https?:\/\/[^\s]+)/i) ||
+            cleanText.match(/➜\s*Local:\s*(https?:\/\/[^\s]+)/i) ||
+            cleanText.match(/ready in \d+ms/i);
 
           if (viteUrlMatch && !serverReady) {
             const detectedUrl = viteUrlMatch[1] || `http://localhost:5173`;
@@ -524,19 +527,23 @@ export class WebContainerSandbox implements SandboxInterface {
             this.addLog('info', `Server ready at ${detectedUrl}`, logSource);
           }
 
-          // Check for errors
-          if (text.includes('error') || text.match(/\[error\]/i)) {
-            this.addLog('error', text.substring(0, 1000), logSource);
+          // Check for errors with improved pattern matching
+          if (this.isErrorText(text)) {
+            // Store full error message (up to reasonable limit)
+            const errorMessage = cleanText.substring(0, 2000);
+            this.addLog('error', errorMessage, logSource);
             
-            // Trigger error callbacks
-            if (text.includes('Internal server error') || 
-                text.match(/500\s+Internal\s+Server\s+Error/i)) {
-              this.triggerErrorCallbacks(text);
+            // Trigger error callbacks for critical errors
+            if (cleanText.includes('Internal server error') ||
+                cleanText.match(/500\s+Internal\s+Server\s+Error/i) ||
+                cleanText.includes('Failed to resolve import') ||
+                cleanText.includes('does the file exist')) {
+              this.triggerErrorCallbacks(errorMessage);
             }
-          } else if (text.toLowerCase().includes('warning') || text.match(/\[warn\]/i)) {
-            this.addLog('warn', text.substring(0, 1000), logSource);
+          } else if (this.isWarningText(text)) {
+            this.addLog('warn', cleanText.substring(0, 1000), logSource);
           } else {
-            this.addLog('info', text.substring(0, 1000), logSource);
+            this.addLog('info', cleanText.substring(0, 1000), logSource);
           }
         },
       })
@@ -866,11 +873,59 @@ export class WebContainerSandbox implements SandboxInterface {
     this.errorCallbacks.clear();
   }
 
+  /**
+   * Strip ANSI escape codes from text
+   */
+  private stripAnsiCodes(text: string): string {
+    // Remove ANSI escape sequences (colors, cursor movements, formatting, etc.)
+    // Matches: \u001b[ or \x1b[ followed by numbers, semicolons, and a command character
+    return text
+      .replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '') // Standard ANSI escape sequences
+      .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')   // Alternative escape format
+      .replace(/\u001b\[[0-9;]*m/g, '')        // Color codes
+      .replace(/\u001b\[[0-9;]*[HJ]/g, '');    // Cursor movement codes
+  }
+
+  /**
+   * Check if text contains error patterns
+   */
+  private isErrorText(text: string): boolean {
+    const cleanText = this.stripAnsiCodes(text).toLowerCase();
+    
+    // Check for various error patterns
+    return (
+      cleanText.includes('error') ||
+      cleanText.includes('[error]') ||
+      cleanText.includes('failed to resolve import') ||
+      cleanText.includes('does the file exist') ||
+      cleanText.includes('internal server error') ||
+      cleanText.includes('500') ||
+      cleanText.match(/error\s+ts\d+/i) ||
+      cleanText.match(/\[vite\]\s*error/i) ||
+      cleanText.match(/\[vite\]\s*internal\s+server\s+error/i)
+    );
+  }
+
+  /**
+   * Check if text contains warning patterns
+   */
+  private isWarningText(text: string): boolean {
+    const cleanText = this.stripAnsiCodes(text).toLowerCase();
+    return (
+      cleanText.includes('warning') ||
+      cleanText.includes('[warn]') ||
+      cleanText.match(/\[vite\]\s*warning/i)
+    );
+  }
+
   private addLog(level: LogEntry['level'], message: string, source?: string): void {
+    // Strip ANSI codes from message before storing
+    const cleanMessage = this.stripAnsiCodes(message);
+    
     const logEntry: LogEntry = {
       timestamp: Date.now(),
       level,
-      message,
+      message: cleanMessage,
       source,
     };
     this.consoleLogs.push(logEntry);

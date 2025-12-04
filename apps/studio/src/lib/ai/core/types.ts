@@ -216,6 +216,8 @@ export interface AIMessage {
     content: string;
     screenshot?: string; // base64 encoded image
     operations?: FileOperation[];
+    toolCalls?: ToolCall[];
+    toolResults?: ToolResult[];
 }
 
 export const ACCURALAI_MODEL_OPTIONS: Array<{

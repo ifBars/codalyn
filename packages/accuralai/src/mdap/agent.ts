@@ -229,6 +229,44 @@ ${task.masterPlan.tasks.map((t, i) =>
 
       // Check for tool calls
       if (!response.toolCalls || response.toolCalls.length === 0) {
+        // For code-reviewer, enforce minimum iteration and file read requirements
+        const isCodeReviewer = this.id === 'code-reviewer';
+        const minIterations = 3;
+        const minFileReads = 2;
+        const fileReadCount = completedToolCalls.filter(tc => tc.name === 'read_file' && tc.success).length;
+        
+        if (isCodeReviewer && (iteration < minIterations || fileReadCount < minFileReads)) {
+          console.log(`[MDAP Agent ${this.id}] Stopping too early (iteration ${iteration}, ${fileReadCount} files read). Requiring minimum ${minIterations} iterations or ${minFileReads} file reads.`);
+          
+          // Add assistant message with reminder
+          this.conversationHistory.push({
+            role: 'assistant',
+            content: response.outputText,
+          });
+          
+          // Inject reminder prompt to continue reviewing
+          const reminderPrompt = `You are stopping too early. A thorough code review requires:
+- At least ${minIterations} iterations of examination
+- Reading at least ${minFileReads} key files from the codebase
+- Currently: ${iteration} iteration(s), ${fileReadCount} file(s) read
+
+Please continue your review by:
+1. Using list_directory to explore more of the project structure
+2. Using read_file to examine additional source files (you need at least ${minFileReads - fileReadCount} more)
+3. Using find_in_files to search for specific patterns or issues
+4. Providing a comprehensive review after thoroughly examining the codebase
+
+Continue using tools to complete a thorough code review.`;
+          
+          this.conversationHistory.push({
+            role: 'user',
+            content: reminderPrompt,
+          });
+          
+          // Continue to next iteration instead of breaking
+          continue;
+        }
+        
         console.log(`[MDAP Agent ${this.id}] No tool calls - execution complete`);
 
         // Add final assistant message to history

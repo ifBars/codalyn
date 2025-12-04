@@ -30,7 +30,7 @@ export function LoadingScreen({ message = "Loading...", submessage }: LoadingScr
             <circle
               cx="104"
               cy="104"
-              r="50"
+              r="60"
               fill="none"
               stroke="rgba(192, 192, 192, 0.6)"
               strokeWidth="2.5"

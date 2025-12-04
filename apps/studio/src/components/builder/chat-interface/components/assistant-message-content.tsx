@@ -3,27 +3,43 @@
 import { Brain, ListChecks } from "lucide-react";
 import { MarkdownContent } from "@/components/ui/markdown-content";
 import { parseChatContent } from "@/lib/chat-parser";
-import type { FileOperation } from "@/lib/ai";
+import type { FileOperation, ToolCall, ToolResult } from "@/lib/ai";
 import { CollapsibleSection } from "./collapsible-section";
+import { ToolCallsList } from "./tool-calls-list";
 
 interface AssistantMessageContentProps {
     content: string;
     operations?: FileOperation[];
+    toolCalls?: ToolCall[];
+    toolResults?: ToolResult[];
     isAnimating?: boolean;
 }
 
-export function AssistantMessageContent({ content, operations, isAnimating = false }: AssistantMessageContentProps) {
+export function AssistantMessageContent({ 
+    content, 
+    operations, 
+    toolCalls, 
+    toolResults, 
+    isAnimating = false 
+}: AssistantMessageContentProps) {
     const sections = parseChatContent(content, isAnimating);
 
     // Filter out empty sections to prevent extra spacing
     const validSections = sections.filter(s => s.content.trim().length > 0);
 
-    if (validSections.length === 0 && (!operations || operations.length === 0)) {
+    const hasContent = validSections.length > 0;
+    const hasOperations = operations && operations.length > 0;
+    const hasToolCalls = toolCalls && toolCalls.length > 0;
+
+    if (!hasContent && !hasOperations && !hasToolCalls) {
         return null;
     }
 
     return (
         <div className="space-y-2">
+            {hasToolCalls && (
+                <ToolCallsList toolCalls={toolCalls} toolResults={toolResults} />
+            )}
             {validSections.map((section, idx) => {
                 if (section.type === 'thinking') {
                     return (
