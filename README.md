@@ -2,6 +2,24 @@
 
 Build beautiful React apps with AI. Just describe what you want, and watch it come to life in real-time.
 
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg?logo=typescript)
+![Next.js](https://img.shields.io/badge/Next.js-15-black.svg?logo=next.js)
+![React](https://img.shields.io/badge/React-18-61DAFB.svg?logo=react)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-38B2AC.svg?logo=tailwind-css)
+![Vite](https://img.shields.io/badge/Vite-5-646CFF.svg?logo=vite)
+![Bun](https://img.shields.io/badge/Bun-≥1.0.0-000000.svg?logo=bun)
+![Supabase](https://img.shields.io/badge/Supabase-3FCF8E.svg?logo=supabase&logoColor=white)
+![WebContainers](https://img.shields.io/badge/WebContainers-1.1-FF6B6B.svg)
+
+[![GitHub stars](https://img.shields.io/github/stars/ifBars/codalyn?style=social)](https://github.com/ifBars/codalyn/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/ifBars/codalyn?style=social)](https://github.com/ifBars/codalyn/network/members)
+[![GitHub issues](https://img.shields.io/github/issues/ifBars/codalyn)](https://github.com/ifBars/codalyn/issues)
+[![GitHub last commit](https://img.shields.io/github/last-commit/ifBars/codalyn)](https://github.com/ifBars/codalyn/commits/main)
+[![GitHub license](https://img.shields.io/github/license/ifBars/codalyn)](https://github.com/ifBars/codalyn/blob/main/LICENSE)
+[![GitHub contributors](https://img.shields.io/github/contributors/ifBars/codalyn)](https://github.com/ifBars/codalyn/graphs/contributors)
+
 ![Preview](preview.gif)
 
 ## ✨ Features
@@ -46,7 +64,7 @@ Build beautiful React apps with AI. Just describe what you want, and watch it co
 
 1. **Clone and Install**:
    ```bash
-   git clone <your-repo-url>
+   git clone https://github.com/ifBars/codalyn.git
    cd codalyn
    bun install
    ```
